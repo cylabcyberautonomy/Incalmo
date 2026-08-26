@@ -205,6 +205,22 @@ class LangChainRegistry:
                 api_key=os.environ["ZAI_API_KEY"],
                 temperature=0.7,
             ),
+
+            # ── Moonshot AI / Kimi (OpenRouter, OpenAI-compatible) ─────────────
+            "kimi-k3": lambda: ChatOpenAI(                    # via OpenRouter; key = OPENROUTER_API_KEY
+                model="moonshotai/kimi-k3-20260715",
+                base_url="https://openrouter.ai/api/v1",
+                api_key=os.environ["OPENROUTER_API_KEY"],
+                temperature=0.7,
+            ),
+
+            # ── Qwen (OpenRouter, OpenAI-compatible) ───────────────────────────
+            "qwen38": lambda: ChatOpenAI(                     # via OpenRouter; key = OPENROUTER_API_KEY
+                model="qwen/qwen3.8-max",
+                base_url="https://openrouter.ai/api/v1",
+                api_key=os.environ["OPENROUTER_API_KEY"],
+                temperature=0.7,
+            ),
         }
 
         # Cache for instantiated models
