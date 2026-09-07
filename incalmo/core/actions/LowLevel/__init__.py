@@ -18,6 +18,7 @@ from .add_ssh_key import AddSSHKey
 from .run_bash_command import RunBashCommand
 from .write_file import WriteFile
 from .run_metasploit_bind_file import RunMetasploitBindFile
+from .msf_rpc_command import MsfRpcCommand
 
 from .privledge_escalation.get_sudo_version import GetSudoVersion
 from .privledge_escalation.check_passwd_permissions import CheckPasswdPermissions

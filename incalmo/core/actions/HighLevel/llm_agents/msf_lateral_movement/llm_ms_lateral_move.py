@@ -5,7 +5,7 @@ from string import Template
 from typing import Any, Dict
 
 from incalmo.core.actions.HighLevel.llm_agents.llm_agent_action import LLMAgentAction
-from incalmo.core.services.metasploit_service import MetasploitService
+from incalmo.core.actions.LowLevel import MsfRpcCommand
 from incalmo.core.models.events import Event, InfectedNewHost
 from incalmo.core.models.network import Host
 from incalmo.core.services import (
@@ -25,9 +25,13 @@ class LLMLateralMoveMetasploit(LLMAgentAction):
 
     The LLM is prompted with target host details and asked to select a
     Metasploit module (exploit / auxiliary / post) and configure its options.
-    The agent executes the chosen module via MetasploitService, deploys the
-    sandcat Caldera agent through any resulting session, then detects the new
-    Caldera agent to emit an InfectedNewHost event.
+    Every module operation is dispatched via MsfRpcCommand to run on the
+    *source* agent's host (not called directly from here) - msfrpcd only
+    listens on 127.0.0.1 on whichever host it's running on, and that's the
+    Kali VM, not wherever this Python code executes. See msf_rpc_client.py's
+    own docstring for the full reasoning. The agent then deploys the sandcat
+    Caldera agent through any resulting session, then detects the new Caldera
+    agent to emit an InfectedNewHost event.
     """
 
     def __init__(
@@ -36,14 +40,12 @@ class LLMLateralMoveMetasploit(LLMAgentAction):
         target_host: Host,
         cve_id: str,
         port_to_attack: int,
-        metasploit_service: MetasploitService,
         llm_interface: LLMAgentInterface,
     ) -> None:
         self.source_host = source_host
         self.target_host = target_host
         self.cve_id = cve_id
         self.port_to_attack = port_to_attack
-        self.metasploit_service = metasploit_service
         self.llm_interface = llm_interface
         self.llm_interface.set_preprompt(self.get_preprompt())
         super().__init__(llm_interface)
@@ -55,24 +57,10 @@ class LLMLateralMoveMetasploit(LLMAgentAction):
     ) -> "LLMLateralMoveMetasploit":
         ess: EnvironmentStateService = llm_interface.environment_state_service
 
-        # Accepts a None config with sensible defaults in case of previous
-        # environment not exposing a metasploit_config attribute on EnvironmentStateService.
-        msf_cfg = getattr(ess, "metasploit_config", None)
-
         src_host = ess.network.find_host_by_ip(params["src_host"])
         target_host = ess.network.find_host_by_ip(params["target_host"])
         cve_id = params["cve_id"]
         port_to_attack = params["port_to_attack"]
-
-        if msf_cfg:
-            msf_service = MetasploitService(
-                password=msf_cfg.password,
-                server=msf_cfg.host,
-                port=msf_cfg.port,
-                ssl=msf_cfg.ssl,
-            )
-        else:
-            msf_service = MetasploitService(password="")
 
         return cls(
             src_host,
@@ -80,7 +68,6 @@ class LLMLateralMoveMetasploit(LLMAgentAction):
             cve_id,
             port_to_attack,
             llm_interface,
-            msf_service,
         )
 
     # Main loop
@@ -136,7 +123,9 @@ class LLMLateralMoveMetasploit(LLMAgentAction):
             module_name: str = module_spec.get("module_name", "")
             args: dict = module_spec.get("args", {})
 
-            # Dispatch to MetasploitService
+            # Dispatch to msfrpcd, running on source_agent's host (Kali) via
+            # msf_rpc_client.py - see class docstring for why this can't be a
+            # direct MetasploitService call from here.
             try:
                 if module_name == "search_exploits":
                     if "cve_id" not in args:
@@ -144,22 +133,20 @@ class LLMLateralMoveMetasploit(LLMAgentAction):
                             "Missing required argument: cve_id. Please try again."
                         )
                         continue
-                    result = self.metasploit_service.search_exploits(
-                        cve_id=args["cve_id"]
-                    )
-                    cur_response = json.dumps(
-                        [m.model_dump() for m in result],
-                        indent=2,
-                    )
+                    cmd = MsfRpcCommand(source_agent, "search_exploits", {"cve_id": args["cve_id"]})
+                    await low_level_action_orchestrator.run_action(cmd, context)
+                    cur_response = cmd.stdout or cmd.stderr
 
                 elif module_name == "get_exploit_module_options":
                     if "module_fullname" not in args:
                         cur_response = "Missing required argument: module_fullname. Please try again."
                         continue
-                    result = self.metasploit_service.get_exploit_module_options(
-                        module_fullname=args["module_fullname"]
+                    cmd = MsfRpcCommand(
+                        source_agent, "get_exploit_module_options",
+                        {"module_fullname": args["module_fullname"]},
                     )
-                    cur_response = json.dumps(result.model_dump(), indent=2)
+                    await low_level_action_orchestrator.run_action(cmd, context)
+                    cur_response = cmd.stdout or cmd.stderr
 
                 elif module_name == "get_payload_options":
                     if "payload_name" not in args:
@@ -167,10 +154,12 @@ class LLMLateralMoveMetasploit(LLMAgentAction):
                             "Missing required argument: payload_name. Please try again."
                         )
                         continue
-                    result = self.metasploit_service.get_payload_options(
-                        payload_name=args["payload_name"]
+                    cmd = MsfRpcCommand(
+                        source_agent, "get_payload_options",
+                        {"payload_name": args["payload_name"]},
                     )
-                    cur_response = json.dumps(result.model_dump(), indent=2)
+                    await low_level_action_orchestrator.run_action(cmd, context)
+                    cur_response = cmd.stdout or cmd.stderr
 
                 elif module_name == "run_exploit":
                     required_fields = [
@@ -188,13 +177,17 @@ class LLMLateralMoveMetasploit(LLMAgentAction):
                         )
                         continue
 
-                    result = self.metasploit_service.run_exploit(
-                        cve_id=args["cve_id"],
-                        exploit_module_fullname=args["exploit_module_fullname"],
-                        exploit_options=args["exploit_options"],
-                        payload_module_fullname=args["payload_module_fullname"],
-                        payload_options=args["payload_options"],
+                    cmd = MsfRpcCommand(
+                        source_agent, "run_exploit",
+                        {
+                            "cve_id": args["cve_id"],
+                            "exploit_module_fullname": args["exploit_module_fullname"],
+                            "exploit_options": args["exploit_options"],
+                            "payload_module_fullname": args["payload_module_fullname"],
+                            "payload_options": args["payload_options"],
+                        },
                     )
+                    await low_level_action_orchestrator.run_action(cmd, context)
 
                     # Wait for agent to beacon back to Caldera
                     await asyncio.sleep(_SANDCAT_BEACON_WAIT)
@@ -207,7 +200,7 @@ class LLMLateralMoveMetasploit(LLMAgentAction):
                         events.append(new_event)
                         break
 
-                    cur_response = json.dumps(result.model_dump(), indent=2)
+                    cur_response = cmd.stdout or cmd.stderr
 
             except Exception as exc:  # noqa: BLE001
                 cur_response = (

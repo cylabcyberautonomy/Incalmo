@@ -31,9 +31,27 @@ class LateralMoveToHost(HighLevelAction):
         self.host_to_attack = host_to_attack
         self.attacking_host = attacking_host
         self.stop_after_success = stop_after_success
-        self.metasploit_service = MetasploitService(
-            password="password"  # Password set in attacker startup file
-        )
+        # KNOWN GAP: connect_to_session_via_bind() below is still called directly
+        # from here (harness-side), not dispatched via MsfRpcCommand like
+        # LLMLateralMoveMetasploit's own module calls now are - it has the same
+        # "msfrpcd only listens on 127.0.0.1 on the Kali host, not the harness
+        # host" problem (see msf_rpc_client.py's docstring) and WILL fail the
+        # same way if actually reached (confirmed live: an earlier eager
+        # `self.metasploit_service = MetasploitService(...)` right here crashed
+        # in MsfRpcClient's own __init__ - which connects immediately - before
+        # .run() ever got called, let alone LLMLateralMoveMetasploit's own
+        # (already-fixed) search_exploits call). Deferred to first use below so
+        # constructing a LateralMoveToHost doesn't fail before an exploit even
+        # starts; connect_to_session_via_bind() itself is still unported.
+        self._metasploit_service: MetasploitService | None = None
+
+    @property
+    def metasploit_service(self) -> MetasploitService:
+        if self._metasploit_service is None:
+            self._metasploit_service = MetasploitService(
+                password="password"  # Password set in attacker startup file
+            )
+        return self._metasploit_service
 
     async def run(
         self,
@@ -100,7 +118,6 @@ class LateralMoveToHost(HighLevelAction):
                         self.host_to_attack,
                         service_to_attack.CVE[0],
                         service_to_attack.port,
-                        self.metasploit_service,
                         context.llm_interface,
                     ).run(
                         low_level_action_orchestrator,
