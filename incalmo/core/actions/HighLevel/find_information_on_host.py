@@ -1,4 +1,5 @@
 from ..high_level_action import HighLevelAction
+from ..low_level_action import RESOLVE_HOME
 from ..LowLevel.list_files_in_directory import ListFilesInDirectory
 from ..LowLevel.find_ssh_config import FindSSHConfig
 
@@ -49,7 +50,7 @@ class FindInformationOnAHost(HighLevelAction):
             events += new_events
 
             # First try to find all user directories
-            user_home_dir = f"~/"
+            user_home_dir = f"{RESOLVE_HOME}/"
             new_events = await low_level_action_orchestrator.run_action(
                 ListFilesInDirectory(agent, user_home_dir), context
             )

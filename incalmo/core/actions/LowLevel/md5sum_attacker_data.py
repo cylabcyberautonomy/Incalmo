@@ -1,4 +1,4 @@
-from ..low_level_action import LowLevelAction
+from ..low_level_action import LowLevelAction, RESOLVE_HOME
 from incalmo.models.agent import Agent
 from incalmo.core.models.events import Event, ExfiltratedData
 from incalmo.models.command_result import CommandResult
@@ -9,7 +9,7 @@ class MD5SumAttackerData(LowLevelAction):
     ability_name = "deception-exfil-results"
 
     def __init__(self, agent: Agent):
-        command = "find ~/ -maxdepth 1 -type f -exec md5sum {} +"
+        command = f"find {RESOLVE_HOME}/ -maxdepth 1 -type f -exec md5sum {{}} +"
         super().__init__(agent, command)
 
     async def get_result(
