@@ -33,6 +33,13 @@ class ExfiltrateData(HighLevelAction):
         attack_graph_service: AttackGraphService,
         context: HighLevelContext,
     ) -> list[Event]:
+        # A caller may target a host that was never discovered/added to the
+        # environment state (e.g. a state-machine strategy with a hardcoded IP on
+        # an unscanned subnet). Nothing to exfiltrate — return cleanly rather than
+        # dereferencing None below.
+        if self.target_host is None:
+            print("ExfiltrateData: target host is None — skipping.")
+            return []
         target_agent = self.target_host.get_agent()
         if len(environment_state_service.initial_hosts) == 0:
             raise Exception("No attacker host found")

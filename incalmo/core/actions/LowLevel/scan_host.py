@@ -22,10 +22,19 @@ class ScanHost(LowLevelAction):
         self,
         result: CommandResult,
     ) -> list[Event]:
-        if result.output is None:
+        # A dispatched scan can legitimately come back with no XML to parse: the
+        # command_result is empty when the poll loop times out (send_command returns
+        # output="" with a "Command polling timed out" stderr — e.g. `nmap -sV` on an
+        # unroutable/filtered host running past the poll cap), or when nmap wrote
+        # nothing. Treat that as "no services discovered" rather than letting an empty
+        # or malformed body raise ParseError and abort the whole run.
+        if not result.output or not result.output.strip():
             return []
 
-        root = ET.fromstring(result.output)
+        try:
+            root = ET.fromstring(result.output)
+        except ET.ParseError:
+            return []
 
         services_by_host = {}
         # Iterate over each <host> element
