@@ -26,8 +26,16 @@ class ScanNetwork(LowLevelAction):
         self,
         result: CommandResult,
     ) -> list[Event]:
-        # Parse XML blob
-        root = ET.fromstring(result.output)
+        # Empty/malformed output (poll-loop timeout returns output="", or nmap wrote
+        # nothing) must not raise ParseError and abort the run — treat it as "no hosts
+        # discovered on this subnet" instead. Same guard as ScanHost.get_result.
+        if not result.output or not result.output.strip():
+            return [HostsDiscovered(self.subnet_mask, [])]
+
+        try:
+            root = ET.fromstring(result.output)
+        except ET.ParseError:
+            return [HostsDiscovered(self.subnet_mask, [])]
 
         ips = self.parse_xml_report(root)
         return [HostsDiscovered(self.subnet_mask, ips)]
