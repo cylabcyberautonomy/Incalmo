@@ -10,6 +10,7 @@ from config.attacker_config import AbstractionLevel
 from incalmo.core.services.environment_state_service import (
     EnvironmentStateService,
 )
+from incalmo.core.services.openrouter_backfill import run_backfill
 
 from incalmo.core.strategies.llm.llm_agent_registry import LLMAgentRegistry
 from incalmo.core.strategies.llm.llm_response import (
@@ -30,6 +31,7 @@ from config.attacker_config import AttackerConfig, LLMStrategyConfig
 from abc import ABC, abstractmethod
 
 import anthropic
+import asyncio
 import inspect
 
 client = anthropic.Anthropic()
@@ -71,6 +73,12 @@ class LLMStrategy(IncalmoStrategy, ABC):
         self.total_steps = 100
         self.last_response = None
 
+        # Guardrail-block detection: rather than spinning forever on empty model
+        # responses (which produce a "No <shell> tag found" loop), abort the run
+        # and say precisely why.
+        self.consecutive_empty = 0
+        self.max_consecutive_empty = 3
+
     @abstractmethod
     def create_llm_interface(self) -> LLMInterface:
         pass
@@ -98,6 +106,24 @@ class LLMStrategy(IncalmoStrategy, ABC):
 
         # with open(f"{experiment_log_dir}/pre_prompt.log", "w") as f:
         #     f.write(pre_prompt)
+
+        await self._backfill_openrouter_stats()
+
+    async def _backfill_openrouter_stats(self):
+        """Fetch generation_time/latency/native_tokens_* for every OpenRouter call
+        this trial made, now that the trial is finished - see
+        incalmo.core.services.openrouter_backfill for why this can't happen inline
+        per-call, and why it runs per-trial rather than being deferred to the end
+        of a whole multi-trial experiment (retention isn't confirmed past ~42min).
+        Runs off-thread (blocking HTTP + retries) so it doesn't stall the event
+        loop; failures are logged, never allowed to break finished_cb.
+        """
+        if not self.token_logger:
+            return
+        try:
+            await asyncio.to_thread(run_backfill, self.token_logger.path, log=self.logger)
+        except Exception as e:
+            self.logger.error(f"[LLMStrategy] OpenRouter generation-stats backfill failed: {e}")
 
     async def step(self) -> bool:
         self.llm_interface.step = self.cur_step
@@ -134,6 +160,32 @@ class LLMStrategy(IncalmoStrategy, ABC):
         except Exception as e:
             self.logger.error(f"Error getting LLM action: {e}")
             return True
+
+        # Detect a safety/guardrail block and abort instead of looping. An
+        # explicit refusal/content_filter stop reason ends the run immediately;
+        # a run of empty responses (a few output tokens billed but no visible
+        # text) is treated as an output-side guardrail block after a few tries.
+        finish_reason = getattr(self.llm_interface, "last_finish_reason", None)
+        if getattr(self.llm_interface, "last_is_refusal", False):
+            if finish_reason in ("refusal", "content_filter"):
+                self.logger.error(
+                    f"[LLMStrategy] Model returned a safety refusal / guardrail "
+                    f"block (finish_reason={finish_reason}) at step "
+                    f"{self.cur_step}. Aborting run."
+                )
+                return True
+            self.consecutive_empty += 1
+            if self.consecutive_empty >= self.max_consecutive_empty:
+                self.logger.error(
+                    f"[LLMStrategy] Model returned {self.consecutive_empty} "
+                    f"consecutive empty responses "
+                    f"(last finish_reason={finish_reason}) ending at step "
+                    f"{self.cur_step}; likely an output-side guardrail block. "
+                    f"Aborting run instead of looping on empty responses."
+                )
+                return True
+        else:
+            self.consecutive_empty = 0
 
         new_perr_reponse = ""
         if llm_action is None:

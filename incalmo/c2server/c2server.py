@@ -17,6 +17,7 @@ from incalmo.c2server.routes import (
     file_bp,
     environment_bp,
     llm_bp,
+    usage_bp,
 )
 
 # Create Flask app
@@ -47,6 +48,7 @@ app.register_blueprint(logging_bp)
 app.register_blueprint(file_bp)
 app.register_blueprint(environment_bp)
 app.register_blueprint(llm_bp)
+app.register_blueprint(usage_bp)
 
 
 # Error handlers
