@@ -10,6 +10,7 @@ from .logging_routes import logging_bp
 from .file_routes import file_bp
 from .environment_routes import environment_bp
 from .llm_routes import llm_bp
+from .usage_routes import usage_bp
 
 __all__ = [
     "agent_bp",
@@ -19,4 +20,5 @@ __all__ = [
     "file_bp",
     "environment_bp",
     "llm_bp",
+    "usage_bp",
 ]

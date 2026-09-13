@@ -1,9 +1,25 @@
+import time
+
 from incalmo.core.strategies.llm.langchain_registry import LangChainRegistry
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from incalmo.core.services.config_service import ConfigService
 from incalmo.core.services import EnvironmentStateService
 from incalmo.core.services.logging_service import TokenUsageLogger
+from incalmo.core.services.litellm_key_status import record_key_status
 from config.attacker_config import LLMStrategyConfig
+
+
+def _header_float(headers: dict, key: str) -> float | None:
+    """Parse a numeric response header (e.g. LiteLLM's x-litellm-* timing/cost
+    headers, always sent as strings). None if absent or unparseable, never a
+    silently-wrong 0."""
+    value = headers.get(key)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 class LLMAgentInterface:
@@ -58,7 +74,23 @@ class LLMAgentInterface:
             elif msg["role"] == "system":
                 langchain_messages.append(SystemMessage(content=msg["content"]))
         model = self._registry.get_model(model_name)
+        start = time.monotonic()
         response = model.invoke(langchain_messages)
+        wall_clock_latency_ms = (time.monotonic() - start) * 1000
+        # {} for every deployment except litellm_proxy ones (see LangChainRegistry).
+        proxy_headers = self._registry.get_last_response_headers(model_name)
+        record_key_status(proxy_headers)
+
+        meta = response.response_metadata or {}
+        finish_reason = meta.get("finish_reason") or meta.get("stop_reason")
+
+        # Reasoning (chain-of-thought) is a separate field from `content`, only
+        # populated for OpenRouter-routed deployments (see _OpenRouterChatOpenAI).
+        # It's logged to llm.log rather than the structured token_usage log since
+        # it's free-text, often long, and is context for reading the transcript.
+        reasoning = response.additional_kwargs.get("reasoning")
+        if reasoning:
+            self.logger.info(f"{model_name} reasoning: \n{reasoning}")
 
         if self.token_logger and response.usage_metadata:
             u = response.usage_metadata
@@ -66,6 +98,14 @@ class LLMAgentInterface:
             # a provider that reports no cache split really did serve none of it from cache
             itd = u.get("input_token_details") or {}
             otd = u.get("output_token_details") or {}
+            # cost lives inside the raw token_usage dict langchain preserves unmodified
+            # (only populated for OpenRouter-routed deployments, via usage: {include: true});
+            # for litellm_proxy deployments it comes from the proxy's own response header instead.
+            token_usage = meta.get("token_usage") or {}
+            cost = token_usage.get("cost")
+            if cost is None:
+                cost = _header_float(proxy_headers, "x-litellm-response-cost")
+            cost_details = token_usage.get("cost_details") or {}
             self.token_logger.record(
                 call_type="subagent",
                 model=model_name,
@@ -75,7 +115,32 @@ class LLMAgentInterface:
                 cache_read_tokens=itd.get("cache_read", 0),
                 cache_creation_tokens=itd.get("cache_creation", 0),
                 reasoning_tokens=otd.get("reasoning", 0),
-                response_id=response.response_metadata.get("id") or response.id,
+                response_id=meta.get("id") or response.id,
+                wall_clock_latency_ms=wall_clock_latency_ms,
+                cost=cost,
+                provider=meta.get("provider"),
+                native_finish_reason=meta.get("native_finish_reason"),
+                litellm_response_duration_ms=_header_float(
+                    proxy_headers, "x-litellm-response-duration-ms"
+                ),
+                litellm_overhead_duration_ms=_header_float(
+                    proxy_headers, "x-litellm-overhead-duration-ms"
+                ),
+                litellm_response_cost_original=_header_float(
+                    proxy_headers, "x-litellm-response-cost-original"
+                ),
+                finish_reason=finish_reason,
+                refusal=response.additional_kwargs.get("refusal"),
+                prompt_tokens=u.get("input_tokens"),
+                completion_tokens=u.get("output_tokens"),
+                total_tokens=u.get("total_tokens"),
+                upstream_inference_cost=cost_details.get("upstream_inference_cost"),
+                upstream_inference_prompt_cost=cost_details.get(
+                    "upstream_inference_prompt_cost"
+                ),
+                upstream_inference_completions_cost=cost_details.get(
+                    "upstream_inference_completions_cost"
+                ),
             )
 
         return response.content

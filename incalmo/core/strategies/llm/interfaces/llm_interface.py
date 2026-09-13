@@ -70,6 +70,12 @@ class LLMInterface(ABC):
     ):
         self.logger = logger
 
+        # Populated by concrete interfaces after every model call so the strategy
+        # can distinguish a safety/guardrail block from ordinary progress.
+        self.last_finish_reason: str | None = None
+        self.last_is_refusal: bool = False
+        self.last_content_empty: bool = False
+
         if not isinstance(config.strategy, LLMStrategyConfig):
             raise ValueError("Strategy must be an instance of LLMStrategy")
 
