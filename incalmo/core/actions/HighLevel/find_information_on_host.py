@@ -32,6 +32,14 @@ class FindInformationOnAHost(HighLevelAction):
         @param agent: agent that will try to read flag.txt
         """
         events: list[Event] = []
+
+        # A caller may target a host that was never discovered/added to the
+        # environment state (e.g. a state-machine strategy with a hardcoded IP on
+        # an unscanned subnet). Nothing to read — return cleanly rather than
+        # dereferencing None below.
+        if self.host is None:
+            print("FindInformationOnAHost: host is None — skipping.")
+            return events
         agents: list[Agent] = []
         if self.user is None:
             agents = self.host.agents
