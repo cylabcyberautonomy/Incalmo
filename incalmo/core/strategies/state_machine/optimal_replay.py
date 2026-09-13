@@ -6,6 +6,7 @@ StateMachineStrategy named "OptimalReplayStrategy" with a script_path."""
 
 import json
 
+from incalmo.core.actions.low_level_action import RESOLVE_HOME
 from incalmo.core.strategies.incalmo_strategy import IncalmoStrategy
 from incalmo.core.actions.LowLevelOptimal import (
     ExploitStruts,
@@ -70,7 +71,7 @@ class OptimalReplayStrategy(IncalmoStrategy):
             if src_agent is None:
                 return False
             events = await self.low_level_action_orchestrator.run_action(
-                ReadFile(src_agent, "~/.ssh/id_ed25519.pub")
+                ReadFile(src_agent, f"{RESOLVE_HOME}/.ssh/id_ed25519.pub")
             )
             key = next(
                 (e.contents for e in events if isinstance(e, FileContentsFound)), None
