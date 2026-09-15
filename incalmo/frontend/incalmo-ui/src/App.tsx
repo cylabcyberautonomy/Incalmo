@@ -5,6 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 
 import { darkTheme } from './themes/theme';
 import { useIncalmoApi } from './hooks/interfaceIncalmoApi';
+import { useApiUsage } from './hooks/useApiUsage';
 import Header from './components/Header';
 import StrategyLauncher from './components/StrategyLauncher';
 import RunningStrategies from './components/RunningStrategies';
@@ -13,6 +14,7 @@ import NetworkGraph from './components/NetworkGraph';
 import ActionLogs from './components/ActionLogs';
 import LLMLogs from './components/LLMLogs';
 import TimelineGraph from './components/TimelineGraph';
+import ApiUsageMonitor from './components/ApiUsageMonitor';
 
 const App = () => {
 
@@ -49,6 +51,14 @@ const App = () => {
     fetchRunningStrategies,
     getStatusColor
   } = useIncalmoApi();
+
+  const {
+    usage: apiUsage,
+    loading: apiUsageLoading,
+    error: apiUsageError,
+    lastFetched: apiUsageLastFetched,
+    refresh: refreshApiUsage
+  } = useApiUsage();
 
   return (
     <ThemeProvider theme={darkTheme}>
@@ -130,6 +140,7 @@ const App = () => {
                   >
                     <Tab label="Network Graph" />
                     <Tab label="Timeline" />
+                    <Tab label="API Usage" />
                   </Tabs>
                   {selectedGraphTab === 0 ? (
                       <NetworkGraph
@@ -139,10 +150,19 @@ const App = () => {
                         lastUpdate={lastHostsUpdate}
                         onRefresh={fetchHosts}
                       />
-                    ) : (
-                        <TimelineGraph 
+                    ) : selectedGraphTab === 1 ? (
+                        <TimelineGraph
                           highLevelLogs={highLevelLogs}
                           lowLevelLogs={lowLevelLogs}
+                        />
+                    ) : (
+                        <ApiUsageMonitor
+                          openrouter={apiUsage?.openrouter ?? null}
+                          litellm={apiUsage?.litellm ?? null}
+                          loading={apiUsageLoading}
+                          error={apiUsageError}
+                          lastFetched={apiUsageLastFetched}
+                          onRefresh={refreshApiUsage}
                         />
                     )}
                 </Box>
