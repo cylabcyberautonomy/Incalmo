@@ -182,6 +182,10 @@ _ADAPTERS: Dict[str, Callable[[dict, str], Any]] = {
 # ── Compact tables of direct (vendor-native) deployments ─────────────────────
 _ANTHROPIC_STD = {"temperature": 0.7, "timeout": None, "stop": None}
 _ANTHROPIC_C5 = {"temperature": 1, "timeout": None, "stop": None}  # Claude 5 requires temp=1
+# Opus 4.7 / 4.8 removed the sampling params (temperature/top_p/top_k): a non-default
+# value is rejected 400. Send none — the API uses the model's own default. (Verified
+# live: opus-4-8 accepts a call with no temperature; a temperature is not required.)
+_ANTHROPIC_NO_SAMPLING = {"timeout": None, "stop": None}
 
 # name -> upstream OpenAI model id
 _OPENAI_DIRECT = {
@@ -226,8 +230,11 @@ _ANTHROPIC_DIRECT = {
     "claude-4.5-sonnet": ("claude-sonnet-4-5-20250929", _ANTHROPIC_STD),
     "claude-sonnet-4-6": ("claude-sonnet-4-6", _ANTHROPIC_STD),
     "claude-haiku-4-5": ("claude-haiku-4-5-20251001", _ANTHROPIC_STD),
-    "claude-opus-4-1": ("claude-opus-4-1-20250805", _ANTHROPIC_STD),
+    "claude-opus-4-1": ("claude-opus-4-1-20250805", _ANTHROPIC_STD),  # RETIRED 2026-08-05 → 404
+    "claude-opus-4-5": ("claude-opus-4-5", _ANTHROPIC_STD),
     "claude-opus-4-6": ("claude-opus-4-6", _ANTHROPIC_STD),
+    "claude-opus-4-7": ("claude-opus-4-7", _ANTHROPIC_NO_SAMPLING),
+    "claude-opus-4-8": ("claude-opus-4-8", _ANTHROPIC_NO_SAMPLING),
     "claude-opus-5": ("claude-opus-5", _ANTHROPIC_C5),
     "claude-sonnet-5": ("claude-sonnet-5", _ANTHROPIC_C5),
     "claude-fable-5": ("claude-fable-5", _ANTHROPIC_C5),
