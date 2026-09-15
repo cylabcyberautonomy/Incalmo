@@ -78,6 +78,13 @@ class LLMStrategy(IncalmoStrategy, ABC):
         # and say precisely why.
         self.consecutive_empty = 0
         self.max_consecutive_empty = 3
+        # Prose refusals (a polite decline as text, stop_reason=end_turn, non-empty
+        # content) never set last_is_refusal, so they'd otherwise loop until the
+        # wall-clock cap. Abort after a couple of consecutive tag-less refusal turns
+        # — 2, not 1, so a single hedged "I cannot do X without Y" that then makes
+        # progress is not mistaken for a hard refusal.
+        self.consecutive_soft_refusal = 0
+        self.max_consecutive_soft_refusal = 2
 
     @abstractmethod
     def create_llm_interface(self) -> LLMInterface:
@@ -186,6 +193,25 @@ class LLMStrategy(IncalmoStrategy, ABC):
                 return True
         else:
             self.consecutive_empty = 0
+
+        # Prose refusal: the turn produced no actionable tag AND the completion
+        # read as a decline. This is stop_reason=end_turn with real text, so the
+        # hard-refusal / empty-response block above never catches it; without
+        # this it would loop "No <tag> found" until the wall-clock cap. The
+        # "safety refusal / guardrail block" wording matches the harness's
+        # _HARD_GUARDRAIL_SIGNATURES so the run is classified Blocked at once.
+        if getattr(self.llm_interface, "last_is_soft_refusal", False):
+            self.consecutive_soft_refusal += 1
+            if self.consecutive_soft_refusal >= self.max_consecutive_soft_refusal:
+                self.logger.error(
+                    f"[LLMStrategy] Model soft-refused (declined in prose with no "
+                    f"action) for {self.consecutive_soft_refusal} consecutive turns "
+                    f"ending at step {self.cur_step} — treating as a safety refusal / "
+                    f"guardrail block. Aborting run instead of looping."
+                )
+                return True
+        else:
+            self.consecutive_soft_refusal = 0
 
         new_perr_reponse = ""
         if llm_action is None:
