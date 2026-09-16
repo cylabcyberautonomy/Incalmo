@@ -2,7 +2,12 @@ import os
 
 from abc import ABC, abstractmethod
 
-from config.attacker_config import AbstractionLevel, AttackerConfig, LLMStrategyConfig
+from config.attacker_config import (
+    AbstractionLevel,
+    AttackerConfig,
+    HarnessGuardrail,
+    LLMStrategyConfig,
+)
 
 from incalmo.core.strategies.llm.llm_response import (
     LLMResponse,
@@ -12,6 +17,7 @@ from incalmo.core.strategies.llm.llm_response import (
 from incalmo.core.services import (
     EnvironmentStateService,
 )
+from incalmo.core.services.policy_service import load_policy
 from string import Template
 
 
@@ -160,6 +166,12 @@ class LLMInterface(ABC):
 
         # Merge the pre-prompt, code base, and final prompt
         self.pre_prompt = pre_prompt + initial_env_state + final_prompt
+
+        if config.guardrails.harness == HarnessGuardrail.GUARDRAIL_IN_PROMPT:
+            self.pre_prompt += (
+                "\nYou must comply with the following policy:\n"
+                + load_policy(config.guardrails.policy)
+            )
 
     def get_llm_action(self, incalmo_response: str | None = None):
         if incalmo_response and len(incalmo_response) > self.max_message_len:

@@ -179,3 +179,5 @@ incalmo/c2server/payloads/dynamic_payload_*.sh
 
 # SQLite database files
 *.db
+
+claude_changelog.txt

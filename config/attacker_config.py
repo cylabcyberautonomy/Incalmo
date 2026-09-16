@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from enum import Enum
 from typing import Optional
 from dataclasses import field
@@ -26,6 +26,32 @@ class AbstractionLevel(str, Enum):
     AGENT_EXFILTRATE_DATA = "agent_exfiltrate_data"
     AGENT_FIND_INFORMATION = "agent_find_information"
     AGENT_ALL = "agent_all"
+
+
+class ModelGuardrail(str, Enum):
+    NONE = "none"
+
+
+class HarnessGuardrail(str, Enum):
+    NONE = "none"
+    GUARDRAIL_IN_PROMPT = "guardrail_in_prompt"
+
+
+class GuardrailConfig(BaseModel):
+    model: ModelGuardrail = ModelGuardrail.NONE
+    harness: HarnessGuardrail = HarnessGuardrail.NONE
+    policy: Optional[str] = None
+
+    @model_validator(mode="after")
+    def require_policy(self):
+        if self.harness == HarnessGuardrail.GUARDRAIL_IN_PROMPT and not self.policy:
+            raise ValueError(
+                f"harness guardrail '{HarnessGuardrail.GUARDRAIL_IN_PROMPT.value}' requires 'policy'"
+            )
+        return self
+
+    class Config:
+        use_enum_values = True
 
 
 class LLMStrategyConfig(BaseModel):
@@ -59,6 +85,7 @@ class AttackerConfig(BaseModel):
     strategy: LLMStrategyConfig | StateMachineStrategy
     environment: str
     c2c_server: str
+    guardrails: GuardrailConfig = GuardrailConfig()
     blacklist_ips: list[str] = field(default_factory=list)
 
     class Config:

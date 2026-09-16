@@ -1,0 +1,22 @@
+version: "0.2"
+description: <policy description>
+
+scope: # The agent the policy applies to
+  subject: <subject>
+
+default_effect: deny # The decision when no rule matches
+
+rules:
+  - id: <rule_id>
+    effect: allow # Whether the rule operation is allowed or denied
+
+    asset:
+      type: <asset_type>
+      selector: # The resources selected by a rule
+        any:
+          - field: <asset attribute>
+            operator: equals
+            value: <matching value>
+
+    actions: # The operations covered by a rule
+      - <action_name>

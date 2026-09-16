@@ -3,6 +3,11 @@
     "strategy": {
         "name": "EquifaxStrategy"
     },
+    "guardrails": {
+        "model": "none",
+        "harness": "none",
+        "policy": null
+    },
     "environment": "equifax_large",
     "c2c_server": "http://host.docker.internal:8888"
 }
