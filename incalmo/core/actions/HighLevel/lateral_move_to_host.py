@@ -6,7 +6,6 @@ from incalmo.core.services import (
     AttackGraphService,
 )
 from incalmo.core.services.action_context import HighLevelContext
-from incalmo.core.services.metasploit_service import MetasploitService
 
 from ..high_level_action import HighLevelAction
 from .llm_agents.msf_lateral_movement.llm_ms_lateral_move import (
@@ -17,6 +16,7 @@ from ..LowLevel import (
     SSHLateralMove,
     NCLateralMove,
     RunMetasploitBindFile,
+    MsfRpcCommand,
 )
 
 
@@ -31,27 +31,33 @@ class LateralMoveToHost(HighLevelAction):
         self.host_to_attack = host_to_attack
         self.attacking_host = attacking_host
         self.stop_after_success = stop_after_success
-        # KNOWN GAP: connect_to_session_via_bind() below is still called directly
-        # from here (harness-side), not dispatched via MsfRpcCommand like
-        # LLMLateralMoveMetasploit's own module calls now are - it has the same
-        # "msfrpcd only listens on 127.0.0.1 on the Kali host, not the harness
-        # host" problem (see msf_rpc_client.py's docstring) and WILL fail the
-        # same way if actually reached (confirmed live: an earlier eager
-        # `self.metasploit_service = MetasploitService(...)` right here crashed
-        # in MsfRpcClient's own __init__ - which connects immediately - before
-        # .run() ever got called, let alone LLMLateralMoveMetasploit's own
-        # (already-fixed) search_exploits call). Deferred to first use below so
-        # constructing a LateralMoveToHost doesn't fail before an exploit even
-        # starts; connect_to_session_via_bind() itself is still unported.
-        self._metasploit_service: MetasploitService | None = None
 
-    @property
-    def metasploit_service(self) -> MetasploitService:
-        if self._metasploit_service is None:
-            self._metasploit_service = MetasploitService(
-                password="password"  # Password set in attacker startup file
+    async def _connect_via_bind(
+        self,
+        low_level_action_orchestrator: LowLevelActionOrchestrator,
+        ip_address: str,
+        context: HighLevelContext,
+    ) -> None:
+        """Connect msfrpcd (on Kali) to the bind listener the just-run
+        RunMetasploitBindFile opened on the newly-infected host, then autoroute
+        its subnet. Dispatched to run ON Kali via MsfRpcCommand, exactly like
+        LLMLateralMoveMetasploit's own msf calls: the harness host can't reach
+        Kali's 127.0.0.1-only msfrpcd, so the old direct
+        MetasploitService.connect_to_session_via_bind() call from here always
+        failed (see msf_rpc_client.py's docstring). Dispatch target is the
+        attacking host's agent — Kali, where msfrpcd runs — mirroring
+        llm_ms_lateral_move's source_agent."""
+        agent = self.attacking_host.get_agent()
+        if agent is None:
+            print(
+                "LateralMoveToHost: no attacking-host agent to dispatch the msf "
+                "bind-connect — skipping session bind."
             )
-        return self._metasploit_service
+            return
+        cmd = MsfRpcCommand(
+            agent, "connect_to_session_via_bind", {"ip_address": ip_address}
+        )
+        await low_level_action_orchestrator.run_action(cmd, context)
 
     async def run(
         self,
@@ -93,8 +99,10 @@ class LateralMoveToHost(HighLevelAction):
                                         RunMetasploitBindFile(event.new_agent)
                                     )
                                 )
-                                self.metasploit_service.connect_to_session_via_bind(
-                                    event.new_agent.host_ip_addrs[0]
+                                await self._connect_via_bind(
+                                    low_level_action_orchestrator,
+                                    event.new_agent.host_ip_addrs[0],
+                                    context,
                                 )
 
                     if len(new_events) > 0:
@@ -139,8 +147,10 @@ class LateralMoveToHost(HighLevelAction):
                             events += await low_level_action_orchestrator.run_action(
                                 RunMetasploitBindFile(event.new_agent)
                             )
-                            self.metasploit_service.connect_to_session_via_bind(
-                                event.new_agent.host_ip_addrs[0]
+                            await self._connect_via_bind(
+                                low_level_action_orchestrator,
+                                event.new_agent.host_ip_addrs[0],
+                                context,
                             )
                     if len(new_events) > 0:
                         events += new_events
@@ -172,8 +182,10 @@ class LateralMoveToHost(HighLevelAction):
                         events += await low_level_action_orchestrator.run_action(
                             RunMetasploitBindFile(event.new_agent)
                         )
-                        self.metasploit_service.connect_to_session_via_bind(
-                            event.new_agent.host_ip_addrs[0]
+                        await self._connect_via_bind(
+                            low_level_action_orchestrator,
+                            event.new_agent.host_ip_addrs[0],
+                            context,
                         )
 
             if len(new_events) > 0:
