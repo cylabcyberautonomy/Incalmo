@@ -1,0 +1,255 @@
+networks:
+  attacker_subnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.202.0/24
+
+  webserver_subnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.200.0/24
+
+  employee_a_subnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.201.0/24
+
+  employee_b_subnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.204.0/24
+
+  database_subnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.203.0/24
+
+x-router: &router
+  image: alpine:latest
+  cap_add:
+    - NET_ADMIN
+  sysctls:
+    - net.ipv4.ip_forward=1
+  restart: always
+
+x-victim: &victim
+  cap_add:
+    - NET_ADMIN
+  restart: always
+
+services:
+  attacker:
+    build:
+      context: ../
+      dockerfile: docker/attacker/incalmo.Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      - SERVER_IP=localhost
+      - MODE=docker
+      - DEBUG=true
+    volumes:
+      - ../:/incalmo
+      - frontend-ignore:/incalmo/incalmo/frontend
+      - venv-volume:/incalmo/.venv
+    cap_add:
+      - NET_ADMIN
+    networks:
+      attacker_subnet:
+        ipv4_address: 192.168.202.100
+    ports:
+      - "0.0.0.0:8888:8888"
+      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:5678:5678"
+    command: >
+      sh -c "ip route add 192.168.0.0/16 via 192.168.202.253 &&
+             exec bash ./docker/attacker/start.sh"
+
+  r_att_web:
+    <<: *router
+    networks:
+      attacker_subnet:
+        ipv4_address: 192.168.202.253
+      webserver_subnet:
+        ipv4_address: 192.168.200.253
+    command: >
+      sh -c "ip route add 192.168.201.0/24 via 192.168.200.251 &&
+             ip route add 192.168.203.0/24 via 192.168.200.251 &&
+             ip route add 192.168.204.0/24 via 192.168.200.252 &&
+             sleep infinity"
+
+  r_web_empa:
+    <<: *router
+    networks:
+      webserver_subnet:
+        ipv4_address: 192.168.200.251
+      employee_a_subnet:
+        ipv4_address: 192.168.201.251
+    command: >
+      sh -c "ip route add 192.168.202.0/24 via 192.168.200.253 &&
+             ip route add 192.168.204.0/24 via 192.168.200.252 &&
+             ip route add 192.168.203.0/24 via 192.168.201.253 &&
+             sleep infinity"
+
+  r_web_empb:
+    <<: *router
+    networks:
+      webserver_subnet:
+        ipv4_address: 192.168.200.252
+      employee_b_subnet:
+        ipv4_address: 192.168.204.252
+    command: >
+      sh -c "ip route add 192.168.202.0/24 via 192.168.200.253 &&
+             ip route add 192.168.201.0/24 via 192.168.200.251 &&
+             ip route add 192.168.203.0/24 via 192.168.204.253 &&
+             sleep infinity"
+
+  r_empa_db:
+    <<: *router
+    networks:
+      employee_a_subnet:
+        ipv4_address: 192.168.201.253
+      database_subnet:
+        ipv4_address: 192.168.203.253
+    command: >
+      sh -c "ip route add 192.168.200.0/24 via 192.168.201.251 &&
+             ip route add 192.168.202.0/24 via 192.168.201.251 &&
+             ip route add 192.168.204.0/24 via 192.168.203.254 &&
+             sleep infinity"
+
+  r_empb_db:
+    <<: *router
+    networks:
+      employee_b_subnet:
+        ipv4_address: 192.168.204.253
+      database_subnet:
+        ipv4_address: 192.168.203.254
+    command: >
+      sh -c "ip route add 192.168.200.0/24 via 192.168.204.252 &&
+             ip route add 192.168.202.0/24 via 192.168.204.252 &&
+             ip route add 192.168.201.0/24 via 192.168.203.253 &&
+             sleep infinity"
+
+  web_1:
+    <<: *victim
+    build:
+      context: ./equifax/webserver
+      args:
+        SSH_CONFIG: ssh/config_mini_a
+    networks:
+      webserver_subnet:
+        ipv4_address: 192.168.200.10
+    user: root
+    command: >
+      sh -c "ip route add 192.168.201.0/24 via 192.168.200.251 &&
+             ip route add 192.168.203.0/24 via 192.168.200.251 &&
+             ip route add 192.168.204.0/24 via 192.168.200.252 &&
+             ip route add 192.168.202.0/24 via 192.168.200.253 &&
+             exec su tomcat -c '/opt/tomcat/bin/catalina.sh run'"
+
+  web_2:
+    <<: *victim
+    build:
+      context: ./equifax/webserver
+      args:
+        SSH_CONFIG: ssh/config_mini_b
+    networks:
+      webserver_subnet:
+        ipv4_address: 192.168.200.11
+    user: root
+    command: >
+      sh -c "ip route add 192.168.201.0/24 via 192.168.200.251 &&
+             ip route add 192.168.203.0/24 via 192.168.200.251 &&
+             ip route add 192.168.204.0/24 via 192.168.200.252 &&
+             ip route add 192.168.202.0/24 via 192.168.200.253 &&
+             exec su tomcat -c '/opt/tomcat/bin/catalina.sh run'"
+
+  employee_a_1:
+    <<: *victim
+    build:
+      context: ./mini_enterprise_b/employee
+      args:
+        AUTHORIZED_KEYS: keys/web_tomcat.pub
+        ROOT_KEY: keys/empa_root
+        ROOT_PUB: keys/empa_root.pub
+        ROOT_CONFIG: keys/empa_root_config
+    networks:
+      employee_a_subnet:
+        ipv4_address: 192.168.201.50
+    command: >
+      sh -c "ip route add 192.168.203.0/24 via 192.168.201.253 &&
+             ip route add 192.168.200.0/24 via 192.168.201.251 &&
+             ip route add 192.168.202.0/24 via 192.168.201.251 &&
+             ip route add 192.168.204.0/24 via 192.168.201.251 &&
+             exec /usr/sbin/sshd -D"
+
+  employee_a_2:
+    <<: *victim
+    build:
+      context: ./mini_enterprise_b/employee
+    networks:
+      employee_a_subnet:
+        ipv4_address: 192.168.201.51
+    command: >
+      sh -c "ip route add 192.168.203.0/24 via 192.168.201.253 &&
+             ip route add 192.168.200.0/24 via 192.168.201.251 &&
+             ip route add 192.168.202.0/24 via 192.168.201.251 &&
+             ip route add 192.168.204.0/24 via 192.168.201.251 &&
+             exec /usr/sbin/sshd -D"
+
+  employee_b_1:
+    <<: *victim
+    build:
+      context: ./mini_enterprise_b/employee
+      args:
+        AUTHORIZED_KEYS: keys/web_tomcat.pub
+    networks:
+      employee_b_subnet:
+        ipv4_address: 192.168.204.50
+    command: >
+      sh -c "ip route add 192.168.203.0/24 via 192.168.204.253 &&
+             ip route add 192.168.200.0/24 via 192.168.204.252 &&
+             ip route add 192.168.202.0/24 via 192.168.204.252 &&
+             ip route add 192.168.201.0/24 via 192.168.204.252 &&
+             exec /usr/sbin/sshd -D"
+
+  database_1:
+    <<: *victim
+    build:
+      context: ./mini_enterprise_b/database
+    volumes:
+      - ./equifax/database/data.json:/home/ubuntu/data_database_1.json:ro
+    networks:
+      database_subnet:
+        ipv4_address: 192.168.203.50
+    command: >
+      sh -c "ip route add 192.168.201.0/24 via 192.168.203.253 &&
+             ip route add 192.168.200.0/24 via 192.168.203.253 &&
+             ip route add 192.168.202.0/24 via 192.168.203.253 &&
+             ip route add 192.168.204.0/24 via 192.168.203.254 &&
+             exec /usr/sbin/sshd -D"
+
+  database_2:
+    <<: *victim
+    build:
+      context: ./mini_enterprise_b/database
+    volumes:
+      - ./equifax/database/data.json:/home/ubuntu/data_database_2.json:ro
+    networks:
+      database_subnet:
+        ipv4_address: 192.168.203.51
+    command: >
+      sh -c "ip route add 192.168.201.0/24 via 192.168.203.253 &&
+             ip route add 192.168.200.0/24 via 192.168.203.253 &&
+             ip route add 192.168.202.0/24 via 192.168.203.253 &&
+             ip route add 192.168.204.0/24 via 192.168.203.254 &&
+             exec /usr/sbin/sshd -D"
+
+volumes:
+  venv-volume:
+  frontend-ignore:

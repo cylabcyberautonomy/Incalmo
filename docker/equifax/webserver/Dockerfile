@@ -13,7 +13,7 @@ RUN apt-get update && \
     mkdir -p $TOMCAT_HOME && \
     chown $TOMCAT_USER:$TOMCAT_GROUP $TOMCAT_HOME
 
-RUN apt-get install -y sshpass nmap ncat python3 python3-pip net-tools curl wget unzip
+RUN apt-get install -y sshpass nmap ncat python3 python3-pip net-tools curl wget unzip iproute2
 
 # Install Go from official source for newer version
 RUN wget https://go.dev/dl/go1.24.2.linux-amd64.tar.gz && \
@@ -49,7 +49,8 @@ RUN mkdir -p $TOMCAT_HOME/.ssh && \
 EXPOSE 8080
 
 # Create .ssh directory and copy config
-COPY ssh/config $TOMCAT_HOME/.ssh/config
+ARG SSH_CONFIG=ssh/config
+COPY ${SSH_CONFIG} $TOMCAT_HOME/.ssh/config
 RUN chown $TOMCAT_USER:$TOMCAT_GROUP $TOMCAT_HOME/.ssh/config && \
     chmod 600 $TOMCAT_HOME/.ssh/config
 

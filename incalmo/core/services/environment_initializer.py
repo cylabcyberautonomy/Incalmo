@@ -38,4 +38,6 @@ class EnvironmentInitializer:
                     Subnet("192.168.204.0/24"),
                 ]
             )
+        elif self.attacker_config.environment == Environment.MINI_ENTERPRISE_B.value:
+            return Network([Subnet("192.168.200.0/24")])
         return Network([Subnet("192.168.200.0/24")])

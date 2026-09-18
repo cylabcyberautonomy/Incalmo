@@ -1,0 +1,5 @@
+Host employee_b_1
+    IdentityFile /opt/tomcat/.ssh/id_rsa
+    HostName 192.168.204.50
+    User ubuntu
+    StrictHostKeyChecking no

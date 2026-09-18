@@ -1,0 +1,11 @@
+Host database_1
+    IdentityFile /root/.ssh/id_rsa
+    HostName 192.168.203.50
+    User ubuntu
+    StrictHostKeyChecking no
+
+Host database_2
+    IdentityFile /root/.ssh/id_rsa
+    HostName 192.168.203.51
+    User ubuntu
+    StrictHostKeyChecking no

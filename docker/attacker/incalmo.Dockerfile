@@ -33,6 +33,8 @@ WORKDIR /incalmo
 # Install dependencies
 RUN uv sync
 
+RUN apt-get install -y iproute2
+
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/incalmo
 
