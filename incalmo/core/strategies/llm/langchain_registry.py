@@ -93,6 +93,15 @@ def _build_openrouter(d: dict, key: str):
     base_url = _resolve(d.get("base_url"))
     if base_url:
         kwargs["base_url"] = base_url
+    # Cap each request so a stalled OpenRouter/provider response fails in minutes
+    # rather than blocking until the harness's 45-min attacker wall-clock cap. A
+    # qwen3.8-max shell run was observed hanging the full cap with zero logs:
+    # model.invoke() had no timeout, so a stuck request never returned and nothing
+    # was written (the response is logged only after invoke returns). Legitimate
+    # turns are ~10-90s, well under 300s, so this never truncates a real turn; one
+    # retry recovers a transient stall. A deployment's params may override either.
+    kwargs.setdefault("timeout", 300)
+    kwargs.setdefault("max_retries", 1)
     return _OpenRouterChatOpenAI(**kwargs)
 
 
