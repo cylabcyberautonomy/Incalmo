@@ -335,6 +335,30 @@ def _build_deployments() -> Dict[str, dict]:
             "params": {},
         }
 
+    # Jev routed through OpenRouter's Decisions API instead of the direct TypeSafe
+    # endpoint. Same model and same request/response shape, but billed to / rate-
+    # limited by the OpenRouter account (a separate bucket from the direct API) and
+    # authenticated with OPENROUTER_API_KEY. Still provider "jev" so the strategy
+    # routes it to JevInterface; the openrouter.ai base_url makes JevClient use its
+    # REST path with the OpenRouter key. `~typesafe/jev-latest` tracks the newest
+    # version; `typesafe/jev-1.13` is pinned.
+    _OPENROUTER_BASE = os.environ.get(
+        "OPENROUTER_DECISIONS_URL", "https://openrouter.ai/api/alpha/decisions"
+    )
+    _JEV_OPENROUTER = {
+        "jev-openrouter": "~typesafe/jev-latest",
+        "jev-latest-openrouter": "~typesafe/jev-latest",
+        "jev-1.13-openrouter": "typesafe/jev-1.13",
+    }
+    for name, model in _JEV_OPENROUTER.items():
+        d[name] = {
+            "provider": "jev",
+            "model": model,
+            "base_url": _OPENROUTER_BASE,
+            "credential_ref": "OPENROUTER_API_KEY",
+            "params": {},
+        }
+
     # All three OpenRouter-routed deployments below pass `usage: {include: true}`
     # via `extra_body`. This is OpenRouter's own (non-OpenAI-standard) request
     # field that makes it echo back the actual dollar cost of the call in

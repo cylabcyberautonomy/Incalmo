@@ -57,6 +57,7 @@ class JevClient:
         api_key_env: str = "TYPESAFE_API_KEY",
         base_url: Optional[str] = None,
         logger=None,
+        prefer_rest: bool = False,
     ):
         self.model = model
         self.api_key_env = api_key_env
@@ -64,6 +65,14 @@ class JevClient:
             "TYPESAFE_BASE_URL", _DEFAULT_BASE_URL
         )
         self.logger = logger
+        # Force the direct REST path (skip the typesafe_sdk) when talking to a
+        # non-default endpoint the SDK can't be steered to — notably OpenRouter's
+        # Decisions API, where the key is OPENROUTER_API_KEY and the SDK, if
+        # installed, would otherwise call the direct TypeSafe endpoint with
+        # TYPESAFE_API_KEY instead. Same request/response shape, different host.
+        self.prefer_rest = prefer_rest or (
+            bool(self.base_url) and "openrouter.ai" in self.base_url
+        )
         self._sdk_client = None
         self._sdk_choice = None
         self._tried_sdk = False
@@ -180,6 +189,6 @@ class JevClient:
         """
         if not criteria:
             raise ValueError("ask_choice requires at least one option in criteria")
-        if self._ensure_sdk():
+        if not self.prefer_rest and self._ensure_sdk():
             return self._ask_via_sdk(state, question_id, instructions, criteria)
         return self._ask_via_rest(state, question_id, instructions, criteria)
