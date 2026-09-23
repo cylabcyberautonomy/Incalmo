@@ -6,17 +6,31 @@ from incalmo.core.services import (
     AttackGraphService,
 )
 from incalmo.core.services.action_context import HighLevelContext
-from incalmo.core.services.metasploit_service import MetasploitService
 
 from ..high_level_action import HighLevelAction
-from .llm_agents.msf_lateral_movement.llm_ms_lateral_move import (
-    LLMLateralMoveMetasploit,
-)
+
+# ---------------------------------------------------------------------------
+# METASPLOIT DISABLED (2026-09-16). msf was never load-bearing for Incalmo's
+# lateral movement: SSHLateralMove / ExploitStruts establish the C2 agent, and
+# the C2 beacon (outbound) reaches pivoted hosts without msf routes. The msf
+# path (LLMLateralMoveMetasploit + RunMetasploitBindFile + connect_to_session_
+# via_bind + autoroute) only ever added fragility — msfrpcd is 127.0.0.1-only on
+# Kali, dispatch-target and type bugs kept it failing, and runs pivoted fine with
+# every msf bind failing. Everything msf is commented out below (not deleted) for
+# an easy revert. CVE-2017-5638 now routes to ExploitStruts for ALL strategies
+# (previously the reliable ExploitStruts path was unreachable whenever an LLM
+# interface was present). The only capability dropped is generic msf exploitation
+# of non-Struts CVEs, which the current environments don't rely on.
+# from .llm_agents.msf_lateral_movement.llm_ms_lateral_move import (
+#     LLMLateralMoveMetasploit,
+# )
+# ---------------------------------------------------------------------------
 from ..LowLevel import (
     ExploitStruts,
     SSHLateralMove,
     NCLateralMove,
-    RunMetasploitBindFile,
+    # RunMetasploitBindFile,   # msf disabled — see note above
+    # MsfRpcCommand,           # msf disabled — see note above
 )
 
 
@@ -31,27 +45,41 @@ class LateralMoveToHost(HighLevelAction):
         self.host_to_attack = host_to_attack
         self.attacking_host = attacking_host
         self.stop_after_success = stop_after_success
-        # KNOWN GAP: connect_to_session_via_bind() below is still called directly
-        # from here (harness-side), not dispatched via MsfRpcCommand like
-        # LLMLateralMoveMetasploit's own module calls now are - it has the same
-        # "msfrpcd only listens on 127.0.0.1 on the Kali host, not the harness
-        # host" problem (see msf_rpc_client.py's docstring) and WILL fail the
-        # same way if actually reached (confirmed live: an earlier eager
-        # `self.metasploit_service = MetasploitService(...)` right here crashed
-        # in MsfRpcClient's own __init__ - which connects immediately - before
-        # .run() ever got called, let alone LLMLateralMoveMetasploit's own
-        # (already-fixed) search_exploits call). Deferred to first use below so
-        # constructing a LateralMoveToHost doesn't fail before an exploit even
-        # starts; connect_to_session_via_bind() itself is still unported.
-        self._metasploit_service: MetasploitService | None = None
 
-    @property
-    def metasploit_service(self) -> MetasploitService:
-        if self._metasploit_service is None:
-            self._metasploit_service = MetasploitService(
-                password="password"  # Password set in attacker startup file
-            )
-        return self._metasploit_service
+    # --- METASPLOIT DISABLED: msf-session helpers kept for revert only ---
+    # @staticmethod
+    # def _kali_agent(environment_state_service: EnvironmentStateService):
+    #     """The agent on the Kali/C2 host — the ONLY host running msfrpcd. Every
+    #     msf op had to dispatch here (not the attacking host, which on a chained
+    #     pivot lacks msfrpcd/pymetasploit3). Identify Kali by C2 server IP."""
+    #     agents = environment_state_service.get_agents() or []
+    #     c2 = getattr(environment_state_service, "c2c_server", None)
+    #     if c2 is not None:
+    #         for a in agents:
+    #             if c2 in (a.host_ip_addrs or []):
+    #                 return a
+    #     for a in agents:
+    #         if (getattr(a, "hostname", "") or "").lower() == "kali":
+    #             return a
+    #     return None
+    #
+    # async def _connect_via_bind(
+    #     self,
+    #     low_level_action_orchestrator: LowLevelActionOrchestrator,
+    #     environment_state_service: EnvironmentStateService,
+    #     ip_address: str,
+    #     context: HighLevelContext,
+    # ) -> None:
+    #     """Connect msfrpcd (on Kali) to the bind listener + autoroute. Dispatched
+    #     to the Kali agent via MsfRpcCommand."""
+    #     agent = self._kali_agent(environment_state_service)
+    #     if agent is None:
+    #         print("LateralMoveToHost: no Kali/C2 agent found — skipping session bind.")
+    #         return
+    #     cmd = MsfRpcCommand(
+    #         agent, "connect_to_session_via_bind", {"ip_address": ip_address}
+    #     )
+    #     await low_level_action_orchestrator.run_action(cmd, context)
 
     async def run(
         self,
@@ -87,15 +115,21 @@ class LateralMoveToHost(HighLevelAction):
                     for event in new_events:
                         if type(event) is InfectedNewHost:
                             event.credential_used = cred
-                            if context.llm_interface:
-                                events += (
-                                    await low_level_action_orchestrator.run_action(
-                                        RunMetasploitBindFile(event.new_agent)
-                                    )
-                                )
-                                self.metasploit_service.connect_to_session_via_bind(
-                                    event.new_agent.host_ip_addrs[0]
-                                )
+                            # METASPLOIT DISABLED: no msf session-bind after the
+                            # SSH lateral move. The SSHLateralMove above already
+                            # establishes the C2 agent on the target.
+                            # if context.llm_interface:
+                            #     events += (
+                            #         await low_level_action_orchestrator.run_action(
+                            #             RunMetasploitBindFile(event.new_agent)
+                            #         )
+                            #     )
+                            #     await self._connect_via_bind(
+                            #         low_level_action_orchestrator,
+                            #         environment_state_service,
+                            #         event.new_agent.host_ip_addrs[0],
+                            #         context,
+                            #     )
 
                     if len(new_events) > 0:
                         events += new_events
@@ -117,36 +151,41 @@ class LateralMoveToHost(HighLevelAction):
             action_to_run = None
 
             if service_to_attack.CVE and self.host_to_attack.has_an_ip_address():
-                # Can only be used when using LLM strategies
                 print(
                     f"Service {service_to_attack} on host {self.host_to_attack.ip_addresses} has CVEs: {service_to_attack.CVE}"
                 )
-                if context.llm_interface:
-                    new_events = await LLMLateralMoveMetasploit(
-                        self.attacking_host,
-                        self.host_to_attack,
-                        service_to_attack.CVE[0],
-                        service_to_attack.port,
-                        context.llm_interface,
-                    ).run(
-                        low_level_action_orchestrator,
-                        environment_state_service,
-                        attack_graph_service,
-                        context,
-                    )
-                    for event in new_events:
-                        if type(event) is InfectedNewHost:
-                            events += await low_level_action_orchestrator.run_action(
-                                RunMetasploitBindFile(event.new_agent)
-                            )
-                            self.metasploit_service.connect_to_session_via_bind(
-                                event.new_agent.host_ip_addrs[0]
-                            )
-                    if len(new_events) > 0:
-                        events += new_events
-                        if self.stop_after_success:
-                            return events
-                elif "CVE-2017-5638" in service_to_attack.CVE:
+                # METASPLOIT DISABLED: the LLM msf-exploit branch is commented out.
+                # CVE-2017-5638 now uses ExploitStruts for ALL strategies (this was
+                # previously only reachable when no llm_interface was present).
+                # if context.llm_interface:
+                #     new_events = await LLMLateralMoveMetasploit(
+                #         self.attacking_host,
+                #         self.host_to_attack,
+                #         service_to_attack.CVE[0],
+                #         service_to_attack.port,
+                #         context.llm_interface,
+                #     ).run(
+                #         low_level_action_orchestrator,
+                #         environment_state_service,
+                #         attack_graph_service,
+                #         context,
+                #     )
+                #     for event in new_events:
+                #         if type(event) is InfectedNewHost:
+                #             events += await low_level_action_orchestrator.run_action(
+                #                 RunMetasploitBindFile(event.new_agent)
+                #             )
+                #             await self._connect_via_bind(
+                #                 low_level_action_orchestrator,
+                #                 environment_state_service,
+                #                 event.new_agent.host_ip_addrs[0],
+                #                 context,
+                #             )
+                #     if len(new_events) > 0:
+                #         events += new_events
+                #         if self.stop_after_success:
+                #             return events
+                if "CVE-2017-5638" in service_to_attack.CVE:
                     action_to_run = ExploitStruts(
                         agent,
                         self.host_to_attack.get_ip_address(),
@@ -166,15 +205,21 @@ class LateralMoveToHost(HighLevelAction):
                 action_to_run, context
             )
 
-            if context.llm_interface:
-                for event in new_events:
-                    if type(event) is InfectedNewHost:
-                        events += await low_level_action_orchestrator.run_action(
-                            RunMetasploitBindFile(event.new_agent)
-                        )
-                        self.metasploit_service.connect_to_session_via_bind(
-                            event.new_agent.host_ip_addrs[0]
-                        )
+            # METASPLOIT DISABLED: no msf session-bind after the exploit. The
+            # low-level action above (ExploitStruts / NCLateralMove) already
+            # establishes the C2 agent on the target.
+            # if context.llm_interface:
+            #     for event in new_events:
+            #         if type(event) is InfectedNewHost:
+            #             events += await low_level_action_orchestrator.run_action(
+            #                 RunMetasploitBindFile(event.new_agent)
+            #             )
+            #             await self._connect_via_bind(
+            #                 low_level_action_orchestrator,
+            #                 environment_state_service,
+            #                 event.new_agent.host_ip_addrs[0],
+            #                 context,
+            #             )
 
             if len(new_events) > 0:
                 events += new_events

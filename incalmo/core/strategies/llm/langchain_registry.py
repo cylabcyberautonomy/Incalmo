@@ -93,6 +93,15 @@ def _build_openrouter(d: dict, key: str):
     base_url = _resolve(d.get("base_url"))
     if base_url:
         kwargs["base_url"] = base_url
+    # Cap each request so a stalled OpenRouter/provider response fails in minutes
+    # rather than blocking until the harness's 45-min attacker wall-clock cap. A
+    # qwen3.8-max shell run was observed hanging the full cap with zero logs:
+    # model.invoke() had no timeout, so a stuck request never returned and nothing
+    # was written (the response is logged only after invoke returns). Legitimate
+    # turns are ~10-90s, well under 300s, so this never truncates a real turn; one
+    # retry recovers a transient stall. A deployment's params may override either.
+    kwargs.setdefault("timeout", 300)
+    kwargs.setdefault("max_retries", 1)
     return _OpenRouterChatOpenAI(**kwargs)
 
 
@@ -182,6 +191,10 @@ _ADAPTERS: Dict[str, Callable[[dict, str], Any]] = {
 # ── Compact tables of direct (vendor-native) deployments ─────────────────────
 _ANTHROPIC_STD = {"temperature": 0.7, "timeout": None, "stop": None}
 _ANTHROPIC_C5 = {"temperature": 1, "timeout": None, "stop": None}  # Claude 5 requires temp=1
+# Opus 4.7 / 4.8 removed the sampling params (temperature/top_p/top_k): a non-default
+# value is rejected 400. Send none — the API uses the model's own default. (Verified
+# live: opus-4-8 accepts a call with no temperature; a temperature is not required.)
+_ANTHROPIC_NO_SAMPLING = {"timeout": None, "stop": None}
 
 # name -> upstream OpenAI model id
 _OPENAI_DIRECT = {
@@ -226,8 +239,11 @@ _ANTHROPIC_DIRECT = {
     "claude-4.5-sonnet": ("claude-sonnet-4-5-20250929", _ANTHROPIC_STD),
     "claude-sonnet-4-6": ("claude-sonnet-4-6", _ANTHROPIC_STD),
     "claude-haiku-4-5": ("claude-haiku-4-5-20251001", _ANTHROPIC_STD),
-    "claude-opus-4-1": ("claude-opus-4-1-20250805", _ANTHROPIC_STD),
+    "claude-opus-4-1": ("claude-opus-4-1-20250805", _ANTHROPIC_STD),  # RETIRED 2026-08-05 → 404
+    "claude-opus-4-5": ("claude-opus-4-5", _ANTHROPIC_STD),
     "claude-opus-4-6": ("claude-opus-4-6", _ANTHROPIC_STD),
+    "claude-opus-4-7": ("claude-opus-4-7", _ANTHROPIC_NO_SAMPLING),
+    "claude-opus-4-8": ("claude-opus-4-8", _ANTHROPIC_NO_SAMPLING),
     "claude-opus-5": ("claude-opus-5", _ANTHROPIC_C5),
     "claude-sonnet-5": ("claude-sonnet-5", _ANTHROPIC_C5),
     "claude-fable-5": ("claude-fable-5", _ANTHROPIC_C5),
@@ -252,6 +268,20 @@ _DEEPSEEK_DIRECT = {
     "deepseek-7b": "deepseek-ai/deepseek-coder-7b-instruct",
     "deepseek-v3": "deepseek-chat",
     "deepseek-r1": "deepseek-reasoner",
+}
+
+# ── TypeSafe AI "System One" / Jev ───────────────────────────────────────────
+# Jev is not a text LLM: it returns a *choice* from a pre-declared option set
+# (https://docs.typesafe.ai/primitives/choice), so it is not built through a
+# langchain adapter and get_model() is never called for it. It is registered here
+# only so a Jev model can be named in config like any other deployment (with its
+# credential referenced by env-var name, resolved fail-fast); the strategy routes
+# these names to JevInterface instead of LangChainInterface. See is_jev().
+# name -> upstream Jev model id
+_JEV_DIRECT = {
+    "jev": "jev-latest",
+    "jev-latest": "jev-latest",
+    "jev-1.13": "jev-1.13.0",
 }
 
 
@@ -292,6 +322,17 @@ def _build_deployments() -> Dict[str, dict]:
             "base_url": None,
             "credential_ref": "DEEPSEEK_API_KEY",
             "params": {"temperature": 0.7},
+        }
+
+    for name, model in _JEV_DIRECT.items():
+        d[name] = {
+            "provider": "jev",
+            "model": model,
+            # None => JevClient uses its default endpoint, overridable via
+            # TYPESAFE_BASE_URL at call time.
+            "base_url": None,
+            "credential_ref": "TYPESAFE_API_KEY",
+            "params": {},
         }
 
     # All three OpenRouter-routed deployments below pass `usage: {include: true}`
@@ -483,6 +524,16 @@ class LangChainRegistry:
             model = built
         self._models[model_name] = model
         return model
+
+    def get_deployment(self, model_name: str) -> Optional[dict]:
+        """Return the raw deployment record for a name, or None if unknown."""
+        return self._deployments.get(model_name)
+
+    def is_jev(self, model_name: str) -> bool:
+        """True if the named deployment is a Jev ('System One') model, which is
+        driven by a choice interface (JevInterface) rather than langchain."""
+        d = self._deployments.get(model_name)
+        return bool(d) and d.get("provider") == "jev"
 
     def get_last_response_headers(self, model_name: str) -> Dict[str, str]:
         """Raw HTTP response headers from this deployment's most recent call, read
