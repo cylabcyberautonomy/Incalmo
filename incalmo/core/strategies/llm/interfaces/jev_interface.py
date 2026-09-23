@@ -296,16 +296,13 @@ class JevInterface(LLMInterface):
 
         choice = result.choice
         if choice not in criteria:
-            # Jev should only ever return a declared key; if not, prefer the
-            # highest-probability valid option, else the first option.
-            valid = {k: v for k, v in (result.probabilities or {}).items() if k in criteria}
-            if valid:
-                choice = max(valid, key=valid.get)
-            else:
-                choice = next(iter(criteria))
-            self.logger.warning(
-                f"[Jev] returned out-of-menu choice '{result.choice}' for {qid}; "
-                f"falling back to '{choice}'."
+            # Jev's choice primitive returns one of the declared option keys by
+            # construction — an out-of-menu value means a broken/incompatible
+            # response, not a decision. Fail loudly rather than guess a substitute.
+            raise RuntimeError(
+                f"[Jev] question '{qid}' returned choice {choice!r}, which is not "
+                f"one of the declared options {list(criteria.keys())}. Jev must "
+                f"return a declared key; aborting."
             )
         return choice
 
