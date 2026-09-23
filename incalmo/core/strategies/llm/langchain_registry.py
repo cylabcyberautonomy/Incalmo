@@ -270,6 +270,20 @@ _DEEPSEEK_DIRECT = {
     "deepseek-r1": "deepseek-reasoner",
 }
 
+# ── TypeSafe AI "System One" / Jev ───────────────────────────────────────────
+# Jev is not a text LLM: it returns a *choice* from a pre-declared option set
+# (https://docs.typesafe.ai/primitives/choice), so it is not built through a
+# langchain adapter and get_model() is never called for it. It is registered here
+# only so a Jev model can be named in config like any other deployment (with its
+# credential referenced by env-var name, resolved fail-fast); the strategy routes
+# these names to JevInterface instead of LangChainInterface. See is_jev().
+# name -> upstream Jev model id
+_JEV_DIRECT = {
+    "jev": "jev-latest",
+    "jev-latest": "jev-latest",
+    "jev-1.13": "jev-1.13.0",
+}
+
 
 def _build_deployments() -> Dict[str, dict]:
     d: Dict[str, dict] = {}
@@ -308,6 +322,17 @@ def _build_deployments() -> Dict[str, dict]:
             "base_url": None,
             "credential_ref": "DEEPSEEK_API_KEY",
             "params": {"temperature": 0.7},
+        }
+
+    for name, model in _JEV_DIRECT.items():
+        d[name] = {
+            "provider": "jev",
+            "model": model,
+            # None => JevClient uses its default endpoint, overridable via
+            # TYPESAFE_BASE_URL at call time.
+            "base_url": None,
+            "credential_ref": "TYPESAFE_API_KEY",
+            "params": {},
         }
 
     # All three OpenRouter-routed deployments below pass `usage: {include: true}`
@@ -499,6 +524,16 @@ class LangChainRegistry:
             model = built
         self._models[model_name] = model
         return model
+
+    def get_deployment(self, model_name: str) -> Optional[dict]:
+        """Return the raw deployment record for a name, or None if unknown."""
+        return self._deployments.get(model_name)
+
+    def is_jev(self, model_name: str) -> bool:
+        """True if the named deployment is a Jev ('System One') model, which is
+        driven by a choice interface (JevInterface) rather than langchain."""
+        d = self._deployments.get(model_name)
+        return bool(d) and d.get("provider") == "jev"
 
     def get_last_response_headers(self, model_name: str) -> Dict[str, str]:
         """Raw HTTP response headers from this deployment's most recent call, read
