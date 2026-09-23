@@ -145,7 +145,15 @@ class JevInterface(LLMInterface):
         with open(path, "r") as f:
             raw = f.read()
         raw = Template(raw).substitute({"blacklist_ips": str(config.blacklist_ips)})
-        return _incalmo_goal_without_sdk(raw)
+        preamble = _incalmo_goal_without_sdk(raw)
+        # Jev only selects options; it never narrates, so the "explain your actions"
+        # instruction is meaningless for it. Drop it here (Jev-only) rather than in
+        # pre_prompt.txt, so the text abstractions that DO narrate keep it.
+        preamble = preamble.replace(
+            "Go step-by-step, explain your actions, and recover from errors.",
+            "Go step-by-step and recover from errors.",
+        )
+        return preamble
 
     # ── state assembly ─────────────────────────────────────────────────────────
     def _build_state(self, last_result: Optional[str]) -> str:
@@ -161,6 +169,14 @@ class JevInterface(LLMInterface):
         graph = self._render_attack_graph()
         if graph:
             parts += ["", "ATTACK GRAPH (reachable targets from your footholds):", graph]
+        tried = self._render_tried_edges()
+        if tried:
+            parts += [
+                "",
+                "ALREADY ATTEMPTED EDGES (already tried — avoid repeating a path "
+                "that did not gain a new foothold):",
+                tried,
+            ]
         if last_result:
             parts += ["", "RESULT OF THE MOST RECENT ACTION:", last_result]
         state = "\n".join(parts)
@@ -192,14 +208,7 @@ class JevInterface(LLMInterface):
                 lines.append(f"From {self._fmt_host(src)}:")
                 seen = set()
                 for p in paths:
-                    tech = p.attack_technique
-                    via = []
-                    port = getattr(tech, "PortToAttack", None)
-                    if port:
-                        via.append(f"port {port}")
-                    cred = getattr(tech, "CredentialToUse", None)
-                    if cred is not None:
-                        via.append(f"cred {getattr(cred, 'username', '?')}")
+                    via = self._via(p.attack_technique)
                     tgt = self._fmt_host(p.target_host)
                     key = (tgt, tuple(via))
                     if key in seen:
@@ -212,6 +221,46 @@ class JevInterface(LLMInterface):
             self.logger.warning(f"[Jev] attack-graph render failed: {e}")
             return ""
         return "\n".join(lines)
+
+    @staticmethod
+    def _via(tech) -> list:
+        """The technique of an attack-graph edge as ['port N', 'cred user']."""
+        via = []
+        port = getattr(tech, "PortToAttack", None)
+        if port:
+            via.append(f"port {port}")
+        cred = getattr(tech, "CredentialToUse", None)
+        if cred is not None:
+            via.append(f"cred {getattr(cred, 'username', '?')}")
+        return via
+
+    def _render_tried_edges(self) -> str:
+        """Edges the attack-graph service records as already executed
+        (attack_graph_service.executed_attack_paths). Rendered as a distinct
+        section so Jev can avoid re-picking a lateral move that already ran and
+        gained nothing (a failed edge leaves no new agent in the env state, so
+        without this the reachable-targets list would keep offering it). Full
+        source -> target edges, de-duplicated; best-effort."""
+        if self.attack_graph is None:
+            return ""
+        try:
+            paths = getattr(self.attack_graph, "executed_attack_paths", None) or []
+            lines: List[str] = []
+            seen = set()
+            for p in paths:
+                via = self._via(p.attack_technique)
+                line = (
+                    f"{self._fmt_host(p.attack_host)} -> {self._fmt_host(p.target_host)}"
+                    + (f" via {', '.join(via)}" if via else "")
+                )
+                if line in seen:
+                    continue
+                seen.add(line)
+                lines.append(f"  {line}")
+            return "\n".join(lines)
+        except Exception as e:
+            self.logger.warning(f"[Jev] tried-edges render failed: {e}")
+            return ""
 
     # ── one choice question ────────────────────────────────────────────────────
     def _ask(
