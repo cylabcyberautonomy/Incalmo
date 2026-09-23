@@ -362,13 +362,20 @@ class JevInterface(LLMInterface):
 
         state = self._build_state(incalmo_response)
 
-        infected = self.env.get_hosts_with_agents()
-        uninfected = self.env.get_hosts_without_agents()
-        data_hosts = [
+        # Only hosts we can reference in generated code (find_host_by_ip needs an
+        # IP). Gating the action menu on these — the same filter _pick_host uses —
+        # guarantees every offered non-finished action has a selectable parameter,
+        # so a chosen action can never turn out to be a dead end.
+        def _formable(hosts):
+            return [h for h in hosts if getattr(h, "ip_addresses", None)]
+
+        infected = _formable(self.env.get_hosts_with_agents())
+        uninfected = _formable(self.env.get_hosts_without_agents())
+        data_hosts = _formable(
             h
             for h in self.env.network.get_all_hosts()
             if getattr(h, "critical_data_files", None)
-        ]
+        )
 
         action_types = self._available_action_types(infected, uninfected, data_hosts)
 
@@ -385,9 +392,15 @@ class JevInterface(LLMInterface):
 
         code = self._plan_parameters(state, chosen, infected, uninfected, data_hosts)
         if code is None:
-            # Nothing selectable for the chosen action; treat as a no-op turn so
-            # the loop re-prompts with fresh state rather than aborting.
-            return None
+            # Unreachable: the menu only offers actions with a formable candidate,
+            # so parameterisation always succeeds. Reaching here means the menu and
+            # the candidate lists disagree — fail loud rather than return None,
+            # which would re-offer the same dead-end action on an unchanged state
+            # and loop until the wall-clock cap.
+            raise RuntimeError(
+                f"[Jev] action {chosen!r} was offered but could not be "
+                f"parameterised from the current state (menu/candidate mismatch)."
+            )
         return LLMResponse(LLMResponseType.ACTION, code)
 
     # ── parameter series -> Incalmo action code ─────────────────────────────────
