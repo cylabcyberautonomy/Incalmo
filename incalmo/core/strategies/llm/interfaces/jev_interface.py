@@ -137,6 +137,14 @@ class JevInterface(LLMInterface):
         # the base interface does.
         self.goal_preamble = self._load_goal_preamble(config)
 
+        # No-progress loop guard. Jev is deterministic, so if the decision state is
+        # unchanged for several consecutive steps the run is looping with no effect
+        # (e.g. repeating an action that changes nothing). Abort then instead of
+        # spinning to total_steps. See get_llm_action.
+        self._last_state: str | None = None
+        self._nochange_count = 0
+        self._max_nochange = 3
+
     def _load_goal_preamble(self, config: AttackerConfig) -> str:
         path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
@@ -380,6 +388,23 @@ class JevInterface(LLMInterface):
             self.logger.info(f"Incalmo's response: \n{incalmo_response}")
 
         state = self._build_state(incalmo_response)
+
+        # No-progress abort: an unchanged state for several steps means the run is
+        # looping with no effect (deterministic Jev re-picks the same action). The
+        # ALREADY ATTEMPTED section changes the state once an action is recorded, so
+        # a few identical states in a row is a genuine dead loop, not normal play.
+        if state == self._last_state:
+            self._nochange_count += 1
+        else:
+            self._nochange_count = 0
+        self._last_state = state
+        if self._nochange_count >= self._max_nochange:
+            raise RuntimeError(
+                f"[Jev] no-progress abort: the decision state was unchanged for "
+                f"{self._nochange_count} consecutive steps (step {self.step}); the "
+                f"run is looping with no effect. Aborting instead of spinning to the "
+                f"step cap."
+            )
 
         # Only hosts we can reference in generated code (find_host_by_ip needs an
         # IP). Gating the action menu on these — the same filter _pick_host uses —
