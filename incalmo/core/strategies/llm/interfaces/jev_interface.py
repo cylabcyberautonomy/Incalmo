@@ -182,6 +182,11 @@ class JevInterface(LLMInterface):
         state = "\n".join(parts)
         if len(state) > self.max_message_len:
             state = state[: self.max_message_len] + "\n[state truncated]"
+        # Log the full prompt Jev receives this step. Jev returns only a choice, so
+        # without this the transcript shows the questions/answers but not the
+        # context they were decided from — see the no-progress loop that was
+        # invisible until the code was read by hand.
+        self.logger.info(f"[Jev] state for step {self.step}:\n{state}")
         return state
 
     @staticmethod
