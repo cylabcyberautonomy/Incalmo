@@ -41,6 +41,7 @@ class FindInformationOnAHost(HighLevelAction):
         if self.host is None:
             print("FindInformationOnAHost: host is None — skipping.")
             return events
+        attack_graph_service.record_action(self.host, self.host, "find_information")
         agents: list[Agent] = []
         if self.user is None:
             agents = self.host.agents

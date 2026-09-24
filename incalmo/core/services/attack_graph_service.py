@@ -29,6 +29,34 @@ class AttackGraphService:
         """
         self.executed_attack_paths.append(attack_path)
 
+    def record_action(
+        self,
+        attack_host: Host,
+        target_host: Host,
+        action: str,
+        attack_technique: AttackTechnique | None = None,
+    ) -> AttackPath:
+        """
+        Record that a high-level `action` was performed against `target_host` from
+        `attack_host` (for a single-host action the two are the same host — a
+        self-edge). Deduplicated by exact identity (attack_host, target_host,
+        technique, action), so the same action against the same host is recorded
+        once but different actions against it are each kept. This is the record
+        readers (e.g. the Jev interface's tried-edges view) use to see what has
+        already been attempted. Deliberately does NOT go through
+        already_executed_attack_path(), whose fuzzy same-target/same-technique
+        branch would collapse distinct actions on one host into a single entry.
+        """
+        ap = AttackPath(
+            attack_host,
+            target_host,
+            attack_technique or AttackTechnique(),
+            action=action,
+        )
+        if ap not in self.executed_attack_paths:
+            self.executed_attack_paths.append(ap)
+        return ap
+
     def already_executed_attack_path(self, attack_path: AttackPath):
         """
         Checks if the given attack path has already been executed or if an equivalent
