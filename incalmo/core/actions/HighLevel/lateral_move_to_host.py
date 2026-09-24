@@ -104,6 +104,10 @@ class LateralMoveToHost(HighLevelAction):
             print("LateralMoveToHost: attacking or target host is None — skipping.")
             return events
 
+        attack_graph_service.record_action(
+            self.attacking_host, self.host_to_attack, "lateral_move"
+        )
+
         # Check if attacking host has credentials
         if len(self.attacking_host.ssh_config) > 0:
             for cred in self.attacking_host.ssh_config:

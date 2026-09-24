@@ -41,6 +41,7 @@ class ExfiltrateData(HighLevelAction):
         if self.target_host is None:
             print("ExfiltrateData: target host is None — skipping.")
             return []
+        attack_graph_service.record_action(self.target_host, self.target_host, "exfiltrate")
         target_agent = self.target_host.get_agent()
         if len(environment_state_service.initial_hosts) == 0:
             raise Exception("No attacker host found")

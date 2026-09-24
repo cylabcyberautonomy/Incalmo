@@ -173,8 +173,8 @@ class JevInterface(LLMInterface):
         if tried:
             parts += [
                 "",
-                "ALREADY ATTEMPTED EDGES (already tried — avoid repeating a path "
-                "that did not gain a new foothold):",
+                "ALREADY ATTEMPTED (actions already performed — avoid repeating one "
+                "that changed nothing):",
                 tried,
             ]
         if last_result:
@@ -240,12 +240,15 @@ class JevInterface(LLMInterface):
         return via
 
     def _render_tried_edges(self) -> str:
-        """Edges the attack-graph service records as already executed
-        (attack_graph_service.executed_attack_paths). Rendered as a distinct
-        section so Jev can avoid re-picking a lateral move that already ran and
-        gained nothing (a failed edge leaves no new agent in the env state, so
-        without this the reachable-targets list would keep offering it). Full
-        source -> target edges, de-duplicated; best-effort."""
+        """The actions the attack-graph service records as already performed
+        (attack_graph_service.executed_attack_paths, now populated by every
+        high-level action). Rendered as a distinct section so Jev can avoid
+        repeating something that changed nothing — e.g. a lateral move that ran
+        and gained no foothold (it leaves no new agent in the env state, so the
+        reachable-targets list would otherwise keep offering it), or re-scanning /
+        re-searching a host it already covered. A single-host action shows as
+        '<action> on <host>'; a lateral move as '<action>: <src> -> <target>'.
+        De-duplicated; best-effort."""
         if self.attack_graph is None:
             return ""
         try:
@@ -253,11 +256,22 @@ class JevInterface(LLMInterface):
             lines: List[str] = []
             seen = set()
             for p in paths:
-                via = self._via(p.attack_technique)
-                line = (
-                    f"{self._fmt_host(p.attack_host)} -> {self._fmt_host(p.target_host)}"
-                    + (f" via {', '.join(via)}" if via else "")
+                action = getattr(p, "action", None)
+                same = p.attack_host is p.target_host or (
+                    getattr(p.attack_host, "ip_addresses", None)
+                    and getattr(p.target_host, "ip_addresses", None)
+                    and p.attack_host.ip_addresses == p.target_host.ip_addresses
                 )
+                if same:
+                    line = f"{action or 'acted'} on {self._fmt_host(p.target_host)}"
+                else:
+                    via = self._via(p.attack_technique)
+                    prefix = f"{action}: " if action else ""
+                    line = (
+                        f"{prefix}{self._fmt_host(p.attack_host)} -> "
+                        f"{self._fmt_host(p.target_host)}"
+                        + (f" via {', '.join(via)}" if via else "")
+                    )
                 if line in seen:
                     continue
                 seen.add(line)

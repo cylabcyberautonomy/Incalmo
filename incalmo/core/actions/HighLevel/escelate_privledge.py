@@ -60,6 +60,7 @@ class EscelatePrivledge(HighLevelAction):
         context: HighLevelContext,
     ) -> list[Event]:
         events = []
+        attack_graph_service.record_action(self.host, self.host, "privilege_escalation")
         # Check if the host has a root user
         for agent in self.host.agents:
             if agent.username == "root":

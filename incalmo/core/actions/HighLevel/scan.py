@@ -34,6 +34,7 @@ class Scan(HighLevelAction):
         context: HighLevelContext,
     ) -> list[Event]:
         events = []
+        attack_graph_service.record_action(self.scan_host, self.scan_host, "scan")
         scan_agent = self.scan_host.get_agent()
         if not scan_agent:
             return events
