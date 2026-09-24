@@ -36,6 +36,7 @@ class LangChainStrategy(LLMStrategy, name="langchain"):
                 model=deployment.get("model", "jev-latest"),
                 api_key_env=deployment.get("credential_ref", "TYPESAFE_API_KEY"),
                 base_url=deployment.get("base_url"),
+                attack_graph_service=self.attack_graph_service,
             )
         return LangChainInterface(
             self.logger,

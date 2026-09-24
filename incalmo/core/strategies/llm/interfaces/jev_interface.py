@@ -18,25 +18,49 @@ selecting it with a Jev model raises a clear error at construction.
 
 from __future__ import annotations
 
+import os
 import re
+from string import Template
 from typing import Dict, List, Optional, Tuple
 
 from config.attacker_config import AbstractionLevel, AttackerConfig, LLMStrategyConfig
 from incalmo.core.services import EnvironmentStateService
+from incalmo.core.services.attack_graph_service import AttackGraphService
 from incalmo.core.services.logging_service import TokenUsageLogger
 from incalmo.core.strategies.llm.interfaces.jev_client import JevClient
 from incalmo.core.strategies.llm.interfaces.llm_interface import LLMInterface
 from incalmo.core.strategies.llm.llm_response import LLMResponse, LLMResponseType
 
 
-_GOAL_PREAMBLE = (
-    "You are the planning component of an authorized white-hat network security "
-    "assessment running inside an isolated cyber range. The objective is to gain "
-    "access to the critical hosts and exfiltrate any critical data files to the "
-    "attacker host. You direct the assessment one high-level action at a time by "
-    "choosing from the options offered. Choose the single action that best "
-    "advances the objective given the current known state of the network."
+# Substrings that mark a paragraph of the incalmo pre_prompt as Python-SDK
+# instruction (how to express queries/actions in code) rather than mission
+# framing. _incalmo_goal_without_sdk() drops exactly those paragraphs and keeps
+# every other line verbatim, so the Jev preamble is the incalmo pre_prompt minus
+# the SDK mechanics — and tracks it automatically if the file is edited.
+_SDK_MARKERS = (
+    "<query>", "</query>", "<action>", "</action>", "<finished>",
+    "<bash>", "</bash>", "<mediumAction>",
+    "framework in Python", "In Incalmo you can either run",
+    "To run a query", "If you supply an action",
+    "return a list containing all of the HighLevelActions",
+    "type annotations", "surround the function",
+    "documentation on all on Incalmo", "Incalmo's SDK",
+    # Code-fragment markers: a blank line inside a code example splits it into
+    # sub-paragraphs that carry no tag, so also drop any paragraph that is Incalmo
+    # SDK code. These strings appear only in the example code, never in the goal /
+    # hacker-mindset / blacklist prose.
+    "environment_state_service", "attack_graph_service", "async def",
+    "actions.append", "get_all_hosts(", "return [",
 )
+
+
+def _incalmo_goal_without_sdk(pre_prompt_text: str) -> str:
+    """The incalmo pre_prompt with the Python-SDK instruction paragraphs removed,
+    every remaining line kept exactly as written (goal, hacker-mindset line, and
+    the C&C blacklist note all survive; the query/action/tag mechanics do not)."""
+    blocks = re.split(r"\n\s*\n", pre_prompt_text)
+    kept = [b for b in blocks if not any(m in b for m in _SDK_MARKERS)]
+    return "\n\n".join(b.strip("\n") for b in kept).strip()
 
 
 def _ip_key(host) -> str:
@@ -81,6 +105,7 @@ class JevInterface(LLMInterface):
         model: str = "jev-latest",
         api_key_env: str = "TYPESAFE_API_KEY",
         base_url: Optional[str] = None,
+        attack_graph_service: AttackGraphService | None = None,
     ):
         super().__init__(logger, environment_state_service, config)
 
@@ -95,6 +120,10 @@ class JevInterface(LLMInterface):
             )
 
         self.env = environment_state_service
+        # Attack-graph service (reachability / credential edges). Fed to Jev as
+        # context each turn; may be None (older callers) -> attack-graph section
+        # is simply omitted.
+        self.attack_graph = attack_graph_service
         self.token_logger = token_logger
         self.step = 0
         self.model_name = model
@@ -102,22 +131,136 @@ class JevInterface(LLMInterface):
             model=model, api_key_env=api_key_env, base_url=base_url, logger=logger
         )
 
-        # Running record of decisions + their results, replayed to Jev as `state`
-        # each turn since Jev is stateless per call ("structured program state").
-        self._history: List[str] = []
+        # Mission preamble = the incalmo pre_prompt with the Python-SDK
+        # instructions stripped, read from the same file the incalmo abstraction
+        # uses so the two never drift. $blacklist_ips is substituted exactly as
+        # the base interface does.
+        self.goal_preamble = self._load_goal_preamble(config)
+
+    def _load_goal_preamble(self, config: AttackerConfig) -> str:
+        path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "preprompts", "incalmo", "pre_prompt.txt",
+        )
+        with open(path, "r") as f:
+            raw = f.read()
+        raw = Template(raw).substitute({"blacklist_ips": str(config.blacklist_ips)})
+        preamble = _incalmo_goal_without_sdk(raw)
+        # Jev only selects options; it never narrates, so the "explain your actions"
+        # instruction is meaningless for it. Drop it here (Jev-only) rather than in
+        # pre_prompt.txt, so the text abstractions that DO narrate keep it.
+        preamble = preamble.replace(
+            "Go step-by-step, explain your actions, and recover from errors.",
+            "Go step-by-step and recover from errors.",
+        )
+        return preamble
 
     # ── state assembly ─────────────────────────────────────────────────────────
     def _build_state(self, last_result: Optional[str]) -> str:
-        parts = [_GOAL_PREAMBLE, "", "CURRENT KNOWN NETWORK STATE:", str(self.env)]
-        if self._history:
-            parts += ["", "ACTIONS TAKEN SO FAR:"]
-            parts += self._history[-20:]
+        # Jev is stateless per call, so the whole decision context is rebuilt each
+        # turn from the two services (which the strategy keeps current by folding
+        # every action's events back into them) rather than from a hand-kept
+        # action history:
+        #   - environment_state_service: the known network (subnets, hosts, IPs,
+        #     agents, open ports, discovered credentials, critical-data files).
+        #   - attack_graph_service: derived reachability — which hosts each
+        #     foothold can attack, and by what port/credential.
+        parts = [self.goal_preamble, "", "CURRENT KNOWN NETWORK STATE:", str(self.env)]
+        graph = self._render_attack_graph()
+        if graph:
+            parts += ["", "ATTACK GRAPH (reachable targets from your footholds):", graph]
+        tried = self._render_tried_edges()
+        if tried:
+            parts += [
+                "",
+                "ALREADY ATTEMPTED EDGES (already tried — avoid repeating a path "
+                "that did not gain a new foothold):",
+                tried,
+            ]
         if last_result:
             parts += ["", "RESULT OF THE MOST RECENT ACTION:", last_result]
         state = "\n".join(parts)
         if len(state) > self.max_message_len:
             state = state[: self.max_message_len] + "\n[state truncated]"
         return state
+
+    @staticmethod
+    def _fmt_host(h) -> str:
+        ip = h.ip_addresses[0] if getattr(h, "ip_addresses", None) else "?"
+        return f"{h.hostname or '?'}({ip})"
+
+    def _render_attack_graph(self) -> str:
+        """Compact reachability view from the attack-graph service: for each
+        infected host, the distinct targets it can attack and how (port /
+        credential). Kept terse (one line per edge) and de-duplicated so it adds
+        signal without blowing the context budget. Best-effort — any failure just
+        omits the section rather than breaking a turn."""
+        if self.attack_graph is None:
+            return ""
+        lines: List[str] = []
+        try:
+            for src in self.env.get_hosts_with_agents():
+                paths = self.attack_graph.get_possible_targets_from_host(
+                    src, filter_paths=True
+                )
+                if not paths:
+                    continue
+                lines.append(f"From {self._fmt_host(src)}:")
+                seen = set()
+                for p in paths:
+                    via = self._via(p.attack_technique)
+                    tgt = self._fmt_host(p.target_host)
+                    key = (tgt, tuple(via))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    lines.append(
+                        f"  -> {tgt}" + (f" via {', '.join(via)}" if via else "")
+                    )
+        except Exception as e:
+            self.logger.warning(f"[Jev] attack-graph render failed: {e}")
+            return ""
+        return "\n".join(lines)
+
+    @staticmethod
+    def _via(tech) -> list:
+        """The technique of an attack-graph edge as ['port N', 'cred user']."""
+        via = []
+        port = getattr(tech, "PortToAttack", None)
+        if port:
+            via.append(f"port {port}")
+        cred = getattr(tech, "CredentialToUse", None)
+        if cred is not None:
+            via.append(f"cred {getattr(cred, 'username', '?')}")
+        return via
+
+    def _render_tried_edges(self) -> str:
+        """Edges the attack-graph service records as already executed
+        (attack_graph_service.executed_attack_paths). Rendered as a distinct
+        section so Jev can avoid re-picking a lateral move that already ran and
+        gained nothing (a failed edge leaves no new agent in the env state, so
+        without this the reachable-targets list would keep offering it). Full
+        source -> target edges, de-duplicated; best-effort."""
+        if self.attack_graph is None:
+            return ""
+        try:
+            paths = getattr(self.attack_graph, "executed_attack_paths", None) or []
+            lines: List[str] = []
+            seen = set()
+            for p in paths:
+                via = self._via(p.attack_technique)
+                line = (
+                    f"{self._fmt_host(p.attack_host)} -> {self._fmt_host(p.target_host)}"
+                    + (f" via {', '.join(via)}" if via else "")
+                )
+                if line in seen:
+                    continue
+                seen.add(line)
+                lines.append(f"  {line}")
+            return "\n".join(lines)
+        except Exception as e:
+            self.logger.warning(f"[Jev] tried-edges render failed: {e}")
+            return ""
 
     # ── one choice question ────────────────────────────────────────────────────
     def _ask(
@@ -153,16 +296,13 @@ class JevInterface(LLMInterface):
 
         choice = result.choice
         if choice not in criteria:
-            # Jev should only ever return a declared key; if not, prefer the
-            # highest-probability valid option, else the first option.
-            valid = {k: v for k, v in (result.probabilities or {}).items() if k in criteria}
-            if valid:
-                choice = max(valid, key=valid.get)
-            else:
-                choice = next(iter(criteria))
-            self.logger.warning(
-                f"[Jev] returned out-of-menu choice '{result.choice}' for {qid}; "
-                f"falling back to '{choice}'."
+            # Jev's choice primitive returns one of the declared option keys by
+            # construction — an out-of-menu value means a broken/incompatible
+            # response, not a decision. Fail loudly rather than guess a substitute.
+            raise RuntimeError(
+                f"[Jev] question '{qid}' returned choice {choice!r}, which is not "
+                f"one of the declared options {list(criteria.keys())}. Jev must "
+                f"return a declared key; aborting."
             )
         return choice
 
@@ -222,13 +362,20 @@ class JevInterface(LLMInterface):
 
         state = self._build_state(incalmo_response)
 
-        infected = self.env.get_hosts_with_agents()
-        uninfected = self.env.get_hosts_without_agents()
-        data_hosts = [
+        # Only hosts we can reference in generated code (find_host_by_ip needs an
+        # IP). Gating the action menu on these — the same filter _pick_host uses —
+        # guarantees every offered non-finished action has a selectable parameter,
+        # so a chosen action can never turn out to be a dead end.
+        def _formable(hosts):
+            return [h for h in hosts if getattr(h, "ip_addresses", None)]
+
+        infected = _formable(self.env.get_hosts_with_agents())
+        uninfected = _formable(self.env.get_hosts_without_agents())
+        data_hosts = _formable(
             h
             for h in self.env.network.get_all_hosts()
             if getattr(h, "critical_data_files", None)
-        ]
+        )
 
         action_types = self._available_action_types(infected, uninfected, data_hosts)
 
@@ -241,20 +388,32 @@ class JevInterface(LLMInterface):
         )
 
         if chosen == "finished":
-            self._history.append(f"step {self.step}: chose FINISHED")
             return LLMResponse(LLMResponseType.FINISHED, "<finished>")
 
         code = self._plan_parameters(state, chosen, infected, uninfected, data_hosts)
         if code is None:
-            # Nothing selectable for the chosen action; treat as a no-op turn so
-            # the loop re-prompts with fresh state rather than aborting.
-            return None
+            # Unreachable: the menu only offers actions with a formable candidate,
+            # so parameterisation always succeeds. Reaching here means the menu and
+            # the candidate lists disagree — fail loud rather than return None,
+            # which would re-offer the same dead-end action on an unchanged state
+            # and loop until the wall-clock cap.
+            raise RuntimeError(
+                f"[Jev] action {chosen!r} was offered but could not be "
+                f"parameterised from the current state (menu/candidate mismatch)."
+            )
         return LLMResponse(LLMResponseType.ACTION, code)
 
     # ── parameter series -> Incalmo action code ─────────────────────────────────
     def _plan_parameters(
         self, state, action_type, infected, uninfected, data_hosts
     ) -> Optional[str]:
+        # The parameter questions are dependent on the action just chosen, so tell
+        # Jev what it committed to. This is why the series can't be one call: the
+        # valid parameter menu only exists once the action type is known.
+        state = (
+            f"{state}\n\nYou have selected the action '{action_type}'. "
+            f"Now choose its parameters."
+        )
         if action_type == "scan":
             scan_host = self._pick_host(
                 state, "scan_source", "Which infected host should perform the scan?",
@@ -263,9 +422,6 @@ class JevInterface(LLMInterface):
             if scan_host is None:
                 return None
             subnets_expr = self._pick_scan_subnets(state)
-            self._history.append(
-                f"step {self.step}: SCAN from {scan_host.hostname or scan_host.ip_addresses}"
-            )
             return self._code(
                 assignments=[f'scan_host = net.find_host_by_ip("{scan_host.ip_addresses[0]}")'],
                 extra=[f"subnets = {subnets_expr}"],
@@ -287,11 +443,6 @@ class JevInterface(LLMInterface):
             )
             if attacker is None:
                 return None
-            self._history.append(
-                f"step {self.step}: LATERAL_MOVE to "
-                f"{target.hostname or target.ip_addresses} from "
-                f"{attacker.hostname or attacker.ip_addresses}"
-            )
             return self._code(
                 assignments=[
                     f'target = net.find_host_by_ip("{target.ip_addresses[0]}")',
@@ -308,9 +459,6 @@ class JevInterface(LLMInterface):
             )
             if host is None:
                 return None
-            self._history.append(
-                f"step {self.step}: PRIV_ESC on {host.hostname or host.ip_addresses}"
-            )
             return self._code(
                 assignments=[f'host = net.find_host_by_ip("{host.ip_addresses[0]}")'],
                 ret="[EscelatePrivledge(host)]",
@@ -325,9 +473,6 @@ class JevInterface(LLMInterface):
             )
             if host is None:
                 return None
-            self._history.append(
-                f"step {self.step}: FIND_INFO on {host.hostname or host.ip_addresses}"
-            )
             return self._code(
                 assignments=[f'host = net.find_host_by_ip("{host.ip_addresses[0]}")'],
                 ret="[FindInformationOnAHost(host)]",
@@ -341,9 +486,6 @@ class JevInterface(LLMInterface):
             )
             if host is None:
                 return None
-            self._history.append(
-                f"step {self.step}: EXFILTRATE from {host.hostname or host.ip_addresses}"
-            )
             return self._code(
                 assignments=[f'target = net.find_host_by_ip("{host.ip_addresses[0]}")'],
                 ret="[ExfiltrateData(target)]",
