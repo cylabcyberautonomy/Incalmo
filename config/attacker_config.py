@@ -59,6 +59,11 @@ class AttackerConfig(BaseModel):
     strategy: LLMStrategyConfig | StateMachineStrategy
     environment: str
     c2c_server: str
+    # Victim-reachable C2 URL for target-side payload downloads (ExploitStruts, ssh/nc agent-spawn).
+    # Under the harness's c2_on_kali mode c2c_server is a 127.0.0.1 ssh -L tunnel reachable only by
+    # the strategy on beluga, while victims must fetch the implant from Kali's in-tenant IP.
+    # ConfigService fills this from c2c_server when unset.
+    agent_c2c_server: Optional[str] = None
     blacklist_ips: list[str] = field(default_factory=list)
 
     class Config:
