@@ -173,8 +173,9 @@ class JevInterface(LLMInterface):
         if tried:
             parts += [
                 "",
-                "ALREADY ATTEMPTED (actions already performed — avoid repeating one "
-                "that changed nothing):",
+                "ACTIONS ALREADY PERFORMED THIS RUN (context; re-attempting one can "
+                "still be worthwhile — e.g. a lateral move that found nothing before "
+                "may succeed once you have discovered new credentials):",
                 tried,
             ]
         if last_result:
