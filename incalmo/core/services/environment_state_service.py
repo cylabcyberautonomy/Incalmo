@@ -140,7 +140,16 @@ class EnvironmentStateService:
             self.network.add_host(host)
 
         for port, service in event.services.items():
-            host.open_ports[port] = OpenPort(port=port, service=service, CVE=[])
+            # Preserve CVEs already found for a known port. A re-scan (e.g. GraphSearch
+            # scanning from a newly-compromised host) re-reports the service but, run from a
+            # pivoted victim, lacks the vuln tooling (nikto) that only Kali has, so it never
+            # re-emits VulnerableServiceFound. Overwriting here would wipe the CVE Kali found,
+            # making ExploitStruts (which gates on CVE-2017-5638) no-op against a webserver we
+            # had good intel on. Only refresh the service label; keep the existing CVE list.
+            if port in host.open_ports:
+                host.open_ports[port].service = service
+            else:
+                host.open_ports[port] = OpenPort(port=port, service=service, CVE=[])
 
     def handle_VulnerableServiceFound(self, event: VulnerableServiceFound):
         host = self.network.find_host_by_ip(event.host)
