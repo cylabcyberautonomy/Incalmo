@@ -122,9 +122,20 @@ class GraphSearch(IncalmoStrategy):
                     )
 
                 # New host created: 1) find information, 2) scan, 3) add attack paths to queue
-                # Find information
+                # 1) Find information (registers this host's own interfaces/subnets)
                 await self.high_level_action_orchestrator.run_action(
                     FindInformationOnAHost(host)
+                )
+
+                # 2) Scan FROM this newly-compromised host. Previously unimplemented: the
+                # strategy only scanned in initial_access, over the foothold's starting
+                # subnets, so any host reachable only by scanning a subnet we pivot INTO
+                # (e.g. a database host behind a webserver we entered via a credential) was
+                # never discovered and the attack graph never grew a path to it. Scanning
+                # from this host's vantage over all now-known subnets surfaces those deeper
+                # hosts so get_possible_targets_from_host below can build paths to them.
+                await self.high_level_action_orchestrator.run_action(
+                    Scan(host, self.environment_state_service.network.get_all_subnets())
                 )
 
                 if len(host.critical_data_files) > 0:
@@ -133,7 +144,7 @@ class GraphSearch(IncalmoStrategy):
                         ExfiltrateData(host)
                     )
 
-                # Add attack paths to queue
+                # 3) Add attack paths to queue
                 new_paths = self.attack_graph_service.get_possible_targets_from_host(
                     host
                 )
