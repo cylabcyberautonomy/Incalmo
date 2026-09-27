@@ -99,6 +99,28 @@ class TokenUsageLogger:
         #
         # upstream_inference_cost/_prompt_cost/_completions_cost break down `cost` into OpenRouter's own
         # cost_details object (from `usage: {include: true}`), OpenRouter-only - None for every other deployment.
+        #
+        # estimated_cost is OUR OWN reconstruction (tokens x published rates), added because DIRECT
+        # Anthropic reports no per-call cost (`cost` is None for it) - it gives cost tracking for the
+        # Anthropic key. Kept in a SEPARATE field so the invariant above - `cost` is only ever a real
+        # provider figure, never computed by us - still holds; estimated_cost is only ever set when the
+        # provider gave no real `cost` AND the model is Anthropic, and is None otherwise so it can never
+        # shadow a real figure. Opus-tier rates: $15/MTok input, $75/MTok output, $1.50/MTok cache-read,
+        # $18.75/MTok cache-write. Only the non-cached remainder of input_tokens is billed at the full
+        # input rate (input_tokens INCLUDES the cached counts, per the note above), so this is the
+        # cache-hit (lower) bound of the 5x spread, not the miss bound.
+        estimated_cost = None
+        if cost is None and isinstance(model, str) and any(
+            t in model.lower() for t in ("claude", "opus", "sonnet", "haiku")
+        ):
+            _fresh_in = max(0, (input_tokens or 0) - (cache_read_tokens or 0) - (cache_creation_tokens or 0))
+            estimated_cost = round(
+                (_fresh_in * 15.0
+                 + (cache_read_tokens or 0) * 1.5
+                 + (cache_creation_tokens or 0) * 18.75
+                 + (output_tokens or 0) * 75.0) / 1_000_000.0,
+                6,
+            )
         with open(self._path, "a") as f:  # one row per LLM call, written immediately
             f.write(
                 json.dumps(
@@ -115,6 +137,7 @@ class TokenUsageLogger:
                         "reasoning_tokens": reasoning_tokens,
                         "wall_clock_latency_ms": wall_clock_latency_ms,
                         "cost": cost,
+                        "estimated_cost": estimated_cost,
                         "provider": provider,
                         "native_finish_reason": native_finish_reason,
                         "litellm_response_duration_ms": litellm_response_duration_ms,
