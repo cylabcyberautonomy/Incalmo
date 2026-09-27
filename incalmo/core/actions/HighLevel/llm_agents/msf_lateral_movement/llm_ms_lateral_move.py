@@ -88,7 +88,7 @@ class LLMLateralMoveMetasploit(LLMAgentAction):
         # Substitute $server in preprompt with known C2 address
         preprompt = self.llm_interface.get_preprompt()
         preprompt = Template(preprompt).safe_substitute(
-            {"server": environment_state_service.c2c_server}
+            {"server": environment_state_service.agent_c2c_server}
         )
         self.llm_interface.set_preprompt(preprompt)
 

@@ -32,6 +32,9 @@ class EnvironmentStateService:
         self.c2api_client = c2api_client
         self.environment_type = config.environment
         self.c2c_server = config.c2c_server
+        # Victim-reachable C2 URL for target-side agent downloads (differs from c2c_server only
+        # under the harness's c2_on_kali tunnel mode); falls back to c2c_server.
+        self.agent_c2c_server = config.agent_c2c_server or config.c2c_server
 
         # Load initial environment state
         environment_initializer = EnvironmentInitializer(config)
