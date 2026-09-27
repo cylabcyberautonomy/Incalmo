@@ -19,6 +19,27 @@ from incalmo.c2server.routes import (
     llm_bp,
     usage_bp,
 )
+from incalmo.c2server.shared import PAYLOADS_DIR
+
+
+def _purge_stale_dynamic_payloads():
+    """Remove leftover per-command dynamic_payload_*.sh at C2 startup. These are ephemeral —
+    written per command from template_payloads/Exec_Bash_Template.sh and normally unlinked when a
+    strategy run ends (celery_tasks.py). A crashed/killed run leaves them behind, and under
+    c2_on_kali the /incalmo tree (incl. this dir) is shipped to the attacker's own Kali box where a
+    recon-capable attacker can read them — a cross-run info leak. Purging on startup guarantees each
+    C2 begins with a clean payloads dir even if a prior run didn't clean up. Never touches the tooling
+    (sandcat.go, downloadAgent.sh, template_payloads/, exploit scripts) — only the generated glob."""
+    n = 0
+    for path in PAYLOADS_DIR.glob("dynamic_payload_*.sh"):
+        try:
+            path.unlink(missing_ok=True)
+            n += 1
+        except OSError:
+            pass
+    if n:
+        logging.getLogger(__name__).info("Purged %d stale dynamic_payload_*.sh at startup", n)
+
 
 # Create Flask app
 app = Flask(__name__)
@@ -163,4 +184,5 @@ if __name__ == "__main__":
     #     debugpy.listen(("0.0.0.0", DEBUG_PORT))
     #     debugpy.wait_for_client()
 
+    _purge_stale_dynamic_payloads()  # start clean: drop any per-command payloads a crashed prior run left
     app.run(host="0.0.0.0", port=8888, debug=DEBUG)
