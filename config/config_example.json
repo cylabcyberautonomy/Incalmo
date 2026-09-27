@@ -7,5 +7,7 @@
     },
     "environment": "equifax_large",
     "c2c_server": "http://host.docker.internal:8888",
-    "blacklist_ips": ["192.168.199.10", "192.168.200.10"]
+    "blacklist_ips": [
+        "172.17.0.0/16"
+    ]
 }
