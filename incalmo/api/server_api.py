@@ -68,6 +68,23 @@ class C2ApiClient:
         )
 
         if not response.ok:
+            # A 404 "Agent not found" means this agent is GONE: the defender restored/rebuilt the host it
+            # ran on, which kills the implant — a LEGITIMATE adversarial outcome, not a bug. Don't crash the
+            # whole attack (which would make the harness mark the run Errored and retry). Return a result the
+            # action layer treats like a failed/empty command (mirrors the timeout path below); the strategy
+            # then moves on and the run ends with a real outcome (the defender restored the host).
+            if response.status_code == 404:
+                return CommandResult(
+                    exit_code="agent_gone",
+                    id="",
+                    output="",
+                    pid=0,
+                    status="agent_gone",
+                    stderr=(
+                        f"Agent {low_level_action.agent.paw} not found "
+                        f"(host likely restored by the defender): {response.text}"
+                    ),
+                )
             raise Exception(
                 f"Failed to send command: {response.status_code} {response.text}"
             )
@@ -87,6 +104,20 @@ class C2ApiClient:
             )
 
             if not status_response.ok:
+                # The agent/command can vanish mid-flight if the defender restores the host between send and
+                # poll — same legitimate outcome as above; return gracefully instead of crashing the attack.
+                if status_response.status_code == 404:
+                    return CommandResult(
+                        exit_code="agent_gone",
+                        id=command.id,
+                        output="",
+                        pid=0,
+                        status="agent_gone",
+                        stderr=(
+                            "Agent/command not found while polling "
+                            f"(host likely restored by the defender): {status_response.text}"
+                        ),
+                    )
                 raise Exception(
                     f"Failed to check command status: {status_response.status_code} {status_response.text}"
                 )
