@@ -100,7 +100,7 @@ If you want to use the web-based interface for Incalmo:
 
 #### 1. Start Backend
 
-Follow Steps 1 through 3 in the [Setup Instructions](#setup-instructions).
+Follow Steps 1 through 3 in the [installation instructions](#installation).
 
 #### 2. Install Node.js dependencies
 
