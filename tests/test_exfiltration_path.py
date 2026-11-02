@@ -109,7 +109,9 @@ def test_uninfected_relay_is_not_a_hop():
     employeea = make_host("employeea0", "10.0.201.10", [SSH], infected=False)
     database = make_host("database0", "10.0.203.10", [SSH])
     # grant() needs an agent to attribute discovery to, so borrow the webserver's
-    cred = SSHCredential("database0", "10.0.203.10", "ubuntu", "22", webserver.agents[0])
+    cred = SSHCredential(
+        "database0", "10.0.203.10", "ubuntu", "22", webserver.agents[0]
+    )
     cred.utilized = True
     employeea.ssh_config.append(cred)
     grant(webserver, employeea)
@@ -205,7 +207,9 @@ def enterprise_b_fixture():
 
 
 def scp_commands(orchestrator):
-    return [(host, cmd) for host, cmd in orchestrator.commands if cmd.startswith("scp ")]
+    return [
+        (host, cmd) for host, cmd in orchestrator.commands if cmd.startswith("scp ")
+    ]
 
 
 async def run_exfil(orchestrator, env, svc, target):
@@ -333,7 +337,9 @@ def test_relay_aborts_when_no_agent_on_a_hop_owns_a_key():
     asyncio.run(run_exfil(orch, env, svc, database))
 
     # the http relay never ran a hop off the database...
-    assert not any("10.0.203.10:" in cmd and host == "employeea0"
-                   for host, cmd in scp_commands(orch))
+    assert not any(
+        "10.0.203.10:" in cmd and host == "employeea0"
+        for host, cmd in scp_commands(orch)
+    )
     # ...and the attacker tried the direct ssh pull instead
     assert any(host == "attacker0" for host, cmd in scp_commands(orch))
