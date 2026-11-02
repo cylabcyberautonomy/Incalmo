@@ -255,6 +255,25 @@ class AttackGraphService:
         return hosts
 
     def find_exfiltration_path(self, target_host: Host, visited=None):
+        """
+        Finds the chain of hosts the data on `target_host` can be relayed along to
+        reach a host running http -- target first, the http host last.
+
+        Every link in the chain is a UTILIZED credential, which is the only evidence
+        available that two hosts can actually reach each other: Subnet models no
+        adjacency, so a route cannot be derived from the topology, but a credential
+        that has been used successfully proves that hop worked at least once. Each
+        hop must also RUN the copy, so a relay host needs an agent -- a host we merely
+        hold credentials to is no use as a hop.
+
+        Args:
+            target_host (Host): The host holding the data to exfiltrate.
+            visited (list[Host] | None): Hosts already explored (recursion bookkeeping).
+
+        Returns:
+            list[Host] | None: The relay chain [target_host, ..., http_host], or None
+            if no credential-proven chain reaches a host running http.
+        """
         # Initialize visited set to keep track of already explored hosts
         if visited is None:
             visited = []
@@ -274,11 +293,14 @@ class AttackGraphService:
         cred_hosts = self.find_hosts_with_credentials_to_host(target_host)
 
         for host in cred_hosts:
-            if host not in visited:
-                # Recursively try to find a path from the current host
-                path = self.find_exfiltration_path(host, visited)
-                if path:  # If a valid path is found, append the current host
-                    return [target_host] + path
+            # Skip hosts we cannot execute on: a relay hop has to run the copy itself,
+            # so credentials alone do not make a host usable as a hop.
+            if host in visited or len(host.agents) == 0:
+                continue
+            # Recursively try to find a path from the current host
+            path = self.find_exfiltration_path(host, visited)
+            if path:  # If a valid path is found, append the current host
+                return [target_host] + path
 
         # No valid path found
         return None
