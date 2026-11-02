@@ -12,8 +12,8 @@ incalmo/frontend/
 .git/
 .vscode/
 .idea/
-__pycache__/
-*.pyc
+**/__pycache__/
+**/*.pyc
 .pytest_cache/
 coverage/
 .coverage
@@ -36,3 +36,13 @@ Thumbs.db
 .venv-c2c/
 output/
 incalmo/c2server/payloads/dynamic_payload_*.sh
+
+# Evaluation-only artifacts (never needed by the C2 image)
+tests/
+docs/
+scripts/
+config/config.json
+config/config_example*.json
+JEV_INTERFACE.md
+incalmo/core/strategies/state_machine/MHBench_equifax_test.py
+incalmo/core/strategies/state_machine/mulval_optimal.py
