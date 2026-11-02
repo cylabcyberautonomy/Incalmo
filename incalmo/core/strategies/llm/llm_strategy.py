@@ -128,9 +128,13 @@ class LLMStrategy(IncalmoStrategy, ABC):
         if not self.token_logger:
             return
         try:
-            await asyncio.to_thread(run_backfill, self.token_logger.path, log=self.logger)
+            await asyncio.to_thread(
+                run_backfill, self.token_logger.path, log=self.logger
+            )
         except Exception as e:
-            self.logger.error(f"[LLMStrategy] OpenRouter generation-stats backfill failed: {e}")
+            self.logger.error(
+                f"[LLMStrategy] OpenRouter generation-stats backfill failed: {e}"
+            )
 
     async def step(self) -> bool:
         self.llm_interface.step = self.cur_step

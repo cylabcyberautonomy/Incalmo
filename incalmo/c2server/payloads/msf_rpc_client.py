@@ -28,6 +28,7 @@ on failure (exit code 1). Never raises past main() - a raised exception here
 would just come back as opaque stderr to the LLM agent loop that has no other
 way to see what went wrong.
 """
+
 import base64
 import json
 import sys
@@ -35,8 +36,13 @@ import sys
 from pymetasploit3.msfrpc import MsfRpcClient
 
 _RANK_ORDER = {
-    "excellent": 0, "great": 1, "good": 2, "normal": 3,
-    "average": 4, "low": 5, "manual": 6,
+    "excellent": 0,
+    "great": 1,
+    "good": 2,
+    "normal": 3,
+    "average": 4,
+    "low": 5,
+    "manual": 6,
 }
 
 
@@ -47,7 +53,7 @@ def _bare_module_name(mtype: str, fullname: str) -> str:
     double it up as "exploit/exploit/multi/..." and fail to load. Strip it so
     callers can pass through whatever search_exploits gave them unmodified."""
     prefix = mtype + "/"
-    return fullname[len(prefix):] if fullname.startswith(prefix) else fullname
+    return fullname[len(prefix) :] if fullname.startswith(prefix) else fullname
 
 
 def _client() -> MsfRpcClient:
@@ -70,12 +76,16 @@ def search_exploits(client: MsfRpcClient, args: dict) -> list[dict]:
         }
         for e in raw
     ]
-    modules.sort(key=lambda m: _RANK_ORDER.get((m["rank"] or "").lower(), len(_RANK_ORDER)))
+    modules.sort(
+        key=lambda m: _RANK_ORDER.get((m["rank"] or "").lower(), len(_RANK_ORDER))
+    )
     return modules
 
 
 def get_exploit_module_options(client: MsfRpcClient, args: dict) -> dict:
-    module = client.modules.use("exploit", _bare_module_name("exploit", args["module_fullname"]))
+    module = client.modules.use(
+        "exploit", _bare_module_name("exploit", args["module_fullname"])
+    )
     return {
         "fullname": args["module_fullname"],
         "all_options": module.options or [],
@@ -88,7 +98,9 @@ def get_exploit_module_options(client: MsfRpcClient, args: dict) -> dict:
 
 
 def get_payload_options(client: MsfRpcClient, args: dict) -> dict:
-    payload = client.modules.use("payload", _bare_module_name("payload", args["payload_name"]))
+    payload = client.modules.use(
+        "payload", _bare_module_name("payload", args["payload_name"])
+    )
     return {
         "fullname": args["payload_name"],
         "all_options": payload.options or [],
@@ -99,11 +111,15 @@ def get_payload_options(client: MsfRpcClient, args: dict) -> dict:
 
 
 def run_exploit(client: MsfRpcClient, args: dict) -> dict:
-    exploit = client.modules.use("exploit", _bare_module_name("exploit", args["exploit_module_fullname"]))
+    exploit = client.modules.use(
+        "exploit", _bare_module_name("exploit", args["exploit_module_fullname"])
+    )
     for key, value in args["exploit_options"].items():
         exploit[key] = value
 
-    payload = client.modules.use("payload", _bare_module_name("payload", args["payload_module_fullname"]))
+    payload = client.modules.use(
+        "payload", _bare_module_name("payload", args["payload_module_fullname"])
+    )
     for key, value in args["payload_options"].items():
         payload[key] = value
 
@@ -180,12 +196,22 @@ _OPS = {
 
 def main() -> int:
     if len(sys.argv) < 2 or sys.argv[1] not in _OPS:
-        print(json.dumps({"error": f"usage: msf_rpc_client.py <{'|'.join(_OPS)}> <base64-json-args>"}))
+        print(
+            json.dumps(
+                {
+                    "error": f"usage: msf_rpc_client.py <{'|'.join(_OPS)}> <base64-json-args>"
+                }
+            )
+        )
         return 1
 
     op = sys.argv[1]
     try:
-        args = json.loads(base64.b64decode(sys.argv[2]).decode()) if len(sys.argv) > 2 else {}
+        args = (
+            json.loads(base64.b64decode(sys.argv[2]).decode())
+            if len(sys.argv) > 2
+            else {}
+        )
     except Exception as exc:
         print(json.dumps({"error": f"could not decode args: {exc}"}))
         return 1

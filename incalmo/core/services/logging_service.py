@@ -110,15 +110,25 @@ class TokenUsageLogger:
         # input rate (input_tokens INCLUDES the cached counts, per the note above), so this is the
         # cache-hit (lower) bound of the 5x spread, not the miss bound.
         estimated_cost = None
-        if cost is None and isinstance(model, str) and any(
-            t in model.lower() for t in ("claude", "opus", "sonnet", "haiku")
+        if (
+            cost is None
+            and isinstance(model, str)
+            and any(t in model.lower() for t in ("claude", "opus", "sonnet", "haiku"))
         ):
-            _fresh_in = max(0, (input_tokens or 0) - (cache_read_tokens or 0) - (cache_creation_tokens or 0))
+            _fresh_in = max(
+                0,
+                (input_tokens or 0)
+                - (cache_read_tokens or 0)
+                - (cache_creation_tokens or 0),
+            )
             estimated_cost = round(
-                (_fresh_in * 15.0
-                 + (cache_read_tokens or 0) * 1.5
-                 + (cache_creation_tokens or 0) * 18.75
-                 + (output_tokens or 0) * 75.0) / 1_000_000.0,
+                (
+                    _fresh_in * 15.0
+                    + (cache_read_tokens or 0) * 1.5
+                    + (cache_creation_tokens or 0) * 18.75
+                    + (output_tokens or 0) * 75.0
+                )
+                / 1_000_000.0,
                 6,
             )
         with open(self._path, "a") as f:  # one row per LLM call, written immediately

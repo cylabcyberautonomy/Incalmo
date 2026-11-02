@@ -38,7 +38,9 @@ def _purge_stale_dynamic_payloads():
         except OSError:
             pass
     if n:
-        logging.getLogger(__name__).info("Purged %d stale dynamic_payload_*.sh at startup", n)
+        logging.getLogger(__name__).info(
+            "Purged %d stale dynamic_payload_*.sh at startup", n
+        )
 
 
 # Create Flask app

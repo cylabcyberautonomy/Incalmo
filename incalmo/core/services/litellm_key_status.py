@@ -21,9 +21,9 @@ import os
 import time
 from pathlib import Path
 
-_STATUS_PATH = Path(
-    os.environ.get("INCALMO_OUTPUT_DIR", "output")
-) / "_litellm_key_status.json"
+_STATUS_PATH = (
+    Path(os.environ.get("INCALMO_OUTPUT_DIR", "output")) / "_litellm_key_status.json"
+)
 
 
 def record_key_status(headers: dict) -> None:

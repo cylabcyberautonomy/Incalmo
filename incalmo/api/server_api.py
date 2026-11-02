@@ -21,6 +21,7 @@ _HTTP_TIMEOUT = (10, 60)
 class _TimeoutSession(requests.Session):
     """Session that applies _HTTP_TIMEOUT to every request unless one is passed explicitly, so no
     bare call can hang forever on a black-holed tunnel."""
+
     def request(self, *args, **kwargs):
         kwargs.setdefault("timeout", _HTTP_TIMEOUT)
         return super().request(*args, **kwargs)
@@ -32,11 +33,26 @@ class _LoggingRetry(Retry):
     and then hit the wall-clock cap looked identical to one doing genuine work. Now each retry prints
     a timestamped '[c2-retry]' line naming the failure, so post-hoc we can count drops and sum the
     time a run actually lost to the tunnel — distinguishing a genuine 45-min attack from a stall."""
-    def increment(self, method=None, url=None, response=None, error=None, _pool=None, _stacktrace=None):
+
+    def increment(
+        self,
+        method=None,
+        url=None,
+        response=None,
+        error=None,
+        _pool=None,
+        _stacktrace=None,
+    ):
         try:
-            reason = error if error is not None else (f"HTTP {response.status}" if response is not None else "unknown")
-            print(f"[c2-retry] {time.strftime('%Y-%m-%d %H:%M:%S')} {method} {url} — bridging failure: {reason}",
-                  flush=True)
+            reason = (
+                error
+                if error is not None
+                else (f"HTTP {response.status}" if response is not None else "unknown")
+            )
+            print(
+                f"[c2-retry] {time.strftime('%Y-%m-%d %H:%M:%S')} {method} {url} — bridging failure: {reason}",
+                flush=True,
+            )
         except Exception:
             pass
         # self.new() (used inside super().increment) preserves type(self), so logging persists across retries
@@ -58,10 +74,15 @@ def _build_session() -> requests.Session:
       * status 502/503/504 — transient C2/proxy errors.
     backoff_factor grows the delay (capped at urllib3's 120s) so a long outage waits, not spins."""
     retry = _LoggingRetry(
-        total=12, connect=12, read=2, status=3,
-        backoff_factor=1.5, status_forcelist=(502, 503, 504),
-        allowed_methods=None,          # retry all methods (POSTs need connect-retries); read=2 bounds POST risk
-        raise_on_status=False, respect_retry_after_header=True,
+        total=12,
+        connect=12,
+        read=2,
+        status=3,
+        backoff_factor=1.5,
+        status_forcelist=(502, 503, 504),
+        allowed_methods=None,  # retry all methods (POSTs need connect-retries); read=2 bounds POST risk
+        raise_on_status=False,
+        respect_retry_after_header=True,
     )
     s = _TimeoutSession()
     adapter = HTTPAdapter(max_retries=retry)

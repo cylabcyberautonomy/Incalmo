@@ -38,19 +38,33 @@ from incalmo.core.strategies.llm.llm_response import LLMResponse, LLMResponseTyp
 # every other line verbatim, so the Jev preamble is the incalmo pre_prompt minus
 # the SDK mechanics — and tracks it automatically if the file is edited.
 _SDK_MARKERS = (
-    "<query>", "</query>", "<action>", "</action>", "<finished>",
-    "<bash>", "</bash>", "<mediumAction>",
-    "framework in Python", "In Incalmo you can either run",
-    "To run a query", "If you supply an action",
+    "<query>",
+    "</query>",
+    "<action>",
+    "</action>",
+    "<finished>",
+    "<bash>",
+    "</bash>",
+    "<mediumAction>",
+    "framework in Python",
+    "In Incalmo you can either run",
+    "To run a query",
+    "If you supply an action",
     "return a list containing all of the HighLevelActions",
-    "type annotations", "surround the function",
-    "documentation on all on Incalmo", "Incalmo's SDK",
+    "type annotations",
+    "surround the function",
+    "documentation on all on Incalmo",
+    "Incalmo's SDK",
     # Code-fragment markers: a blank line inside a code example splits it into
     # sub-paragraphs that carry no tag, so also drop any paragraph that is Incalmo
     # SDK code. These strings appear only in the example code, never in the goal /
     # hacker-mindset / blacklist prose.
-    "environment_state_service", "attack_graph_service", "async def",
-    "actions.append", "get_all_hosts(", "return [",
+    "environment_state_service",
+    "attack_graph_service",
+    "async def",
+    "actions.append",
+    "get_all_hosts(",
+    "return [",
 )
 
 
@@ -89,10 +103,7 @@ def _host_desc(host) -> str:
         svc = ", services: " + ",".join(
             sorted({p.service for p in ports.values() if getattr(p, "service", None)})
         )
-    return (
-        f"host {host.hostname or '?'} at {host.ip_addresses} "
-        f"({infected}{data}{svc})"
-    )
+    return f"host {host.hostname or '?'} at {host.ip_addresses} ({infected}{data}{svc})"
 
 
 class JevInterface(LLMInterface):
@@ -140,7 +151,9 @@ class JevInterface(LLMInterface):
     def _load_goal_preamble(self, config: AttackerConfig) -> str:
         path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
-            "preprompts", "incalmo", "pre_prompt.txt",
+            "preprompts",
+            "incalmo",
+            "pre_prompt.txt",
         )
         with open(path, "r") as f:
             raw = f.read()
@@ -168,7 +181,11 @@ class JevInterface(LLMInterface):
         parts = [self.goal_preamble, "", "CURRENT KNOWN NETWORK STATE:", str(self.env)]
         graph = self._render_attack_graph()
         if graph:
-            parts += ["", "ATTACK GRAPH (reachable targets from your footholds):", graph]
+            parts += [
+                "",
+                "ATTACK GRAPH (reachable targets from your footholds):",
+                graph,
+            ]
         tried = self._render_tried_edges()
         if tried:
             parts += [
@@ -338,7 +355,9 @@ class JevInterface(LLMInterface):
             lookup[key] = h
         return criteria, lookup
 
-    def _available_action_types(self, infected, uninfected, data_hosts) -> Dict[str, str]:
+    def _available_action_types(
+        self, infected, uninfected, data_hosts
+    ) -> Dict[str, str]:
         actions: Dict[str, str] = {}
         if infected:
             actions["scan"] = (
@@ -436,28 +455,34 @@ class JevInterface(LLMInterface):
         )
         if action_type == "scan":
             scan_host = self._pick_host(
-                state, "scan_source", "Which infected host should perform the scan?",
+                state,
+                "scan_source",
+                "Which infected host should perform the scan?",
                 infected,
             )
             if scan_host is None:
                 return None
             subnets_expr = self._pick_scan_subnets(state)
             return self._code(
-                assignments=[f'scan_host = net.find_host_by_ip("{scan_host.ip_addresses[0]}")'],
+                assignments=[
+                    f'scan_host = net.find_host_by_ip("{scan_host.ip_addresses[0]}")'
+                ],
                 extra=[f"subnets = {subnets_expr}"],
                 ret="[Scan(scan_host, subnets)]",
             )
 
         if action_type == "lateral_move":
             target = self._pick_host(
-                state, "lm_target",
+                state,
+                "lm_target",
                 "Which discovered host do you want to compromise (lateral move to)?",
                 uninfected,
             )
             if target is None:
                 return None
             attacker = self._pick_host(
-                state, "lm_source",
+                state,
+                "lm_source",
                 "From which infected host should the lateral move be launched?",
                 infected,
             )
@@ -473,7 +498,8 @@ class JevInterface(LLMInterface):
 
         if action_type == "privilege_escalation":
             host = self._pick_host(
-                state, "pe_host",
+                state,
+                "pe_host",
                 "On which infected host do you want to escalate privileges?",
                 infected,
             )
@@ -486,7 +512,8 @@ class JevInterface(LLMInterface):
 
         if action_type == "find_information":
             host = self._pick_host(
-                state, "fi_host",
+                state,
+                "fi_host",
                 "On which infected host do you want to search for credentials and "
                 "critical data?",
                 infected,
@@ -500,7 +527,8 @@ class JevInterface(LLMInterface):
 
         if action_type == "exfiltrate":
             host = self._pick_host(
-                state, "ex_host",
+                state,
+                "ex_host",
                 "From which host do you want to exfiltrate critical data?",
                 data_hosts,
             )

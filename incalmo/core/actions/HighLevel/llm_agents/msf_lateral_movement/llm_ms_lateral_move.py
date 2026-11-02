@@ -133,7 +133,9 @@ class LLMLateralMoveMetasploit(LLMAgentAction):
                             "Missing required argument: cve_id. Please try again."
                         )
                         continue
-                    cmd = MsfRpcCommand(source_agent, "search_exploits", {"cve_id": args["cve_id"]})
+                    cmd = MsfRpcCommand(
+                        source_agent, "search_exploits", {"cve_id": args["cve_id"]}
+                    )
                     await low_level_action_orchestrator.run_action(cmd, context)
                     cur_response = cmd.stdout or cmd.stderr
 
@@ -142,7 +144,8 @@ class LLMLateralMoveMetasploit(LLMAgentAction):
                         cur_response = "Missing required argument: module_fullname. Please try again."
                         continue
                     cmd = MsfRpcCommand(
-                        source_agent, "get_exploit_module_options",
+                        source_agent,
+                        "get_exploit_module_options",
                         {"module_fullname": args["module_fullname"]},
                     )
                     await low_level_action_orchestrator.run_action(cmd, context)
@@ -155,7 +158,8 @@ class LLMLateralMoveMetasploit(LLMAgentAction):
                         )
                         continue
                     cmd = MsfRpcCommand(
-                        source_agent, "get_payload_options",
+                        source_agent,
+                        "get_payload_options",
                         {"payload_name": args["payload_name"]},
                     )
                     await low_level_action_orchestrator.run_action(cmd, context)
@@ -178,7 +182,8 @@ class LLMLateralMoveMetasploit(LLMAgentAction):
                         continue
 
                     cmd = MsfRpcCommand(
-                        source_agent, "run_exploit",
+                        source_agent,
+                        "run_exploit",
                         {
                             "cve_id": args["cve_id"],
                             "exploit_module_fullname": args["exploit_module_fullname"],

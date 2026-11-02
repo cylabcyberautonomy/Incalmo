@@ -43,8 +43,12 @@ def _retry_after_seconds(exc: Exception) -> float | None:
     uses exponential backoff instead."""
     resp = getattr(exc, "response", None)
     headers = getattr(resp, "headers", None) or {}
+
     def _h(name):
-        return headers.get(name) or headers.get(name.lower()) or headers.get(name.title())
+        return (
+            headers.get(name) or headers.get(name.lower()) or headers.get(name.title())
+        )
+
     ra = _h("Retry-After")
     if ra is not None:
         try:
@@ -158,12 +162,14 @@ class LangChainInterface(LLMInterface):
                     raise
                 _wait = _retry_after_seconds(_e)
                 if _wait is None:
-                    _wait = min(60.0, 2.0 * (2 ** _attempt)) + random.uniform(0, 1)
+                    _wait = min(60.0, 2.0 * (2**_attempt)) + random.uniform(0, 1)
                 self.logger.warning(
                     f"[rate-limit] 429 on {model_name} "
                     f"(attempt {_attempt + 1}/{_MAX_RL_RETRIES}); sleeping {_wait:.1f}s"
                 )
-                _record_rate_limit_wait(_wait)  # so the harness pauses the timeout clock
+                _record_rate_limit_wait(
+                    _wait
+                )  # so the harness pauses the timeout clock
                 time.sleep(_wait)
         wall_clock_latency_ms = (time.monotonic() - start) * 1000
         # {} for every deployment except litellm_proxy ones (see LangChainRegistry).
@@ -191,8 +197,7 @@ class LangChainInterface(LLMInterface):
         # a few output tokens billed but no text). We deliberately do NOT flag
         # empty content that stopped for "length"/"max_tokens".
         self.last_is_refusal = finish_reason in ("refusal", "content_filter") or (
-            self.last_content_empty
-            and finish_reason not in ("length", "max_tokens")
+            self.last_content_empty and finish_reason not in ("length", "max_tokens")
         )
         self.logger.info(
             f"{self.model_name} finish_reason={finish_reason} "
