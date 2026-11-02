@@ -29,3 +29,10 @@ Thumbs.db
 
 # Python virtual environment
 .venv/
+
+# Local settings and per-run artifacts
+.env
+.env.*
+.venv-c2c/
+output/
+incalmo/c2server/payloads/dynamic_payload_*.sh
