@@ -190,7 +190,11 @@ _ADAPTERS: Dict[str, Callable[[dict, str], Any]] = {
 
 # ── Compact tables of direct (vendor-native) deployments ─────────────────────
 _ANTHROPIC_STD = {"temperature": 0.7, "timeout": None, "stop": None}
-_ANTHROPIC_C5 = {"temperature": 1, "timeout": None, "stop": None}  # Claude 5 requires temp=1
+_ANTHROPIC_C5 = {
+    "temperature": 1,
+    "timeout": None,
+    "stop": None,
+}  # Claude 5 requires temp=1
 # Opus 4.7 / 4.8 removed the sampling params (temperature/top_p/top_k): a non-default
 # value is rejected 400. Send none — the API uses the model's own default. (Verified
 # live: opus-4-8 accepts a call with no temperature; a temperature is not required.)
@@ -239,7 +243,10 @@ _ANTHROPIC_DIRECT = {
     "claude-4.5-sonnet": ("claude-sonnet-4-5-20250929", _ANTHROPIC_STD),
     "claude-sonnet-4-6": ("claude-sonnet-4-6", _ANTHROPIC_STD),
     "claude-haiku-4-5": ("claude-haiku-4-5-20251001", _ANTHROPIC_STD),
-    "claude-opus-4-1": ("claude-opus-4-1-20250805", _ANTHROPIC_STD),  # RETIRED 2026-08-05 → 404
+    "claude-opus-4-1": (
+        "claude-opus-4-1-20250805",
+        _ANTHROPIC_STD,
+    ),  # RETIRED 2026-08-05 → 404
     "claude-opus-4-5": ("claude-opus-4-5", _ANTHROPIC_STD),
     "claude-opus-4-6": ("claude-opus-4-6", _ANTHROPIC_STD),
     "claude-opus-4-7": ("claude-opus-4-7", _ANTHROPIC_NO_SAMPLING),
@@ -375,7 +382,9 @@ def _build_deployments() -> Dict[str, dict]:
         # unavailable for free ... use this slug instead: z-ai/glm-5.2"), so the
         # :free slug now 404s. Paid slug, consistent with glm-4.5 (also paid).
         "model": "z-ai/glm-5.2",
-        "base_url": os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        "base_url": os.environ.get(
+            "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+        ),
         "credential_ref": "OPENROUTER_API_KEY",
         "params": {
             "temperature": 0.7,
@@ -393,7 +402,9 @@ def _build_deployments() -> Dict[str, dict]:
     d["kimi-k3"] = {
         "provider": "openrouter",
         "model": "moonshotai/kimi-k3",
-        "base_url": os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        "base_url": os.environ.get(
+            "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+        ),
         "credential_ref": "OPENROUTER_API_KEY",
         "params": {"extra_body": {"usage": {"include": True}}},
     }
@@ -404,7 +415,9 @@ def _build_deployments() -> Dict[str, dict]:
     d["qwen3-8"] = {
         "provider": "openrouter",
         "model": "qwen/qwen3-8b",
-        "base_url": os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        "base_url": os.environ.get(
+            "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+        ),
         "credential_ref": "OPENROUTER_API_KEY",
         "params": {"extra_body": {"usage": {"include": True}}},
     }
@@ -416,7 +429,9 @@ def _build_deployments() -> Dict[str, dict]:
     d["qwen3.8-max"] = {
         "provider": "openrouter",
         "model": "qwen/qwen3.8-max",
-        "base_url": os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        "base_url": os.environ.get(
+            "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+        ),
         "credential_ref": "OPENROUTER_API_KEY",
         "params": {"extra_body": {"usage": {"include": True}}},
     }
@@ -431,7 +446,9 @@ def _build_deployments() -> Dict[str, dict]:
     d["kimi-k2-base"] = {
         "provider": "openrouter",
         "model": "moonshotai/kimi-k2",
-        "base_url": os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        "base_url": os.environ.get(
+            "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+        ),
         "credential_ref": "OPENROUTER_API_KEY",
         "params": {"max_tokens": 8192, "extra_body": {"usage": {"include": True}}},
     }
@@ -443,7 +460,9 @@ def _build_deployments() -> Dict[str, dict]:
     d["qwen3-235b-non-thinking"] = {
         "provider": "openrouter",
         "model": "qwen/qwen3-235b-a22b-2507",
-        "base_url": os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        "base_url": os.environ.get(
+            "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+        ),
         "credential_ref": "OPENROUTER_API_KEY",
         "params": {"extra_body": {"usage": {"include": True}}},
     }
@@ -454,7 +473,9 @@ def _build_deployments() -> Dict[str, dict]:
     d["glm-4.5"] = {
         "provider": "openrouter",
         "model": "z-ai/glm-4.5",
-        "base_url": os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        "base_url": os.environ.get(
+            "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+        ),
         "credential_ref": "OPENROUTER_API_KEY",
         "params": {"extra_body": {"usage": {"include": True}}},
     }

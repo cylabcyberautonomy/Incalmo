@@ -30,7 +30,9 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("token_usage_path", type=Path, help="Path to a run's token_usage.json")
+    parser.add_argument(
+        "token_usage_path", type=Path, help="Path to a run's token_usage.json"
+    )
     parser.add_argument("--max-retries", type=int, default=DEFAULT_MAX_RETRIES)
     parser.add_argument(
         "--retry-delay",

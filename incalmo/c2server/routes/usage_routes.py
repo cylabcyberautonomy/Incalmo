@@ -26,7 +26,12 @@ _REQUEST_TIMEOUT = 10
 def _get_openrouter_usage() -> dict:
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
-        return {"limit": None, "limit_remaining": None, "usage": None, "error": "OPENROUTER_API_KEY not set"}
+        return {
+            "limit": None,
+            "limit_remaining": None,
+            "usage": None,
+            "error": "OPENROUTER_API_KEY not set",
+        }
 
     try:
         resp = requests.get(
@@ -64,7 +69,9 @@ def _proxy_root(base_url: str) -> str:
     return root
 
 
-def _query_key_info(auth_key: str, root: str, target_key: str | None = None) -> tuple[dict | None, str | None]:
+def _query_key_info(
+    auth_key: str, root: str, target_key: str | None = None
+) -> tuple[dict | None, str | None]:
     """One /key/info call. Returns ({spend, max_budget}, None) on success, or
     (None, error message) on any failure - never raises."""
     try:

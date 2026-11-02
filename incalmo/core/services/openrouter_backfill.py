@@ -92,7 +92,9 @@ def fetch_generation_stats(
                 timeout=10,
             )
         except requests.RequestException as e:
-            warn(f"[openrouter_backfill] {generation_id}: request failed (attempt {attempt}): {e}")
+            warn(
+                f"[openrouter_backfill] {generation_id}: request failed (attempt {attempt}): {e}"
+            )
             time.sleep(retry_delay)
             continue
 
@@ -154,7 +156,9 @@ def run_backfill(
 
     ids = load_openrouter_response_ids(token_usage_path)
     if not ids:
-        info("[openrouter_backfill] No OpenRouter response ids ('gen-...') in this log - nothing to backfill.")
+        info(
+            "[openrouter_backfill] No OpenRouter response ids ('gen-...') in this log - nothing to backfill."
+        )
         return {}
 
     out_path = token_usage_path.parent / "generation_stats.json"
@@ -174,7 +178,9 @@ def run_backfill(
     stats = dict(existing)
     fetched = 0
     for i, gen_id in enumerate(todo):
-        result = fetch_generation_stats(gen_id, api_key, max_retries, retry_delay, log=log)
+        result = fetch_generation_stats(
+            gen_id, api_key, max_retries, retry_delay, log=log
+        )
         if result is not None:
             stats[gen_id] = result
             fetched += 1
@@ -182,5 +188,7 @@ def run_backfill(
             time.sleep(sleep_between)
 
     out_path.write_text(json.dumps(stats, indent=2, sort_keys=True))
-    info(f"[openrouter_backfill] Wrote {fetched} new / {len(stats)} total entries to {out_path}")
+    info(
+        f"[openrouter_backfill] Wrote {fetched} new / {len(stats)} total entries to {out_path}"
+    )
     return stats
