@@ -22,3 +22,5 @@ from .bgp_router import (
     BGPRouterWithdraw,
     BGPRouterObserve,
 )
+from .http_service import HTTPServiceImpersonation
+from .http_request import HTTPRequest

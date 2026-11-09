@@ -158,3 +158,21 @@ These high-level actions run through an agent on a compromised `Host` using the 
 - `BGPRouterObserve(host: Host, router: str, prefix: str)`: reads the router's local `show ip bgp prefix`.
 
 `router` is a discovered router IPv4 address; `prefix` is an exact IPv4 network (host bits are rejected); `next_hop` must be reachable from that router. Confirm remote route acceptance and packet forwarding separately from local command success.
+
+### 6.3 HTTP Service Impersonation
+`HTTPServiceImpersonation(host: Host, bind_address: str, port: int, action: str = "start", service_id: str | None = None, response_body: str | None = None, interface: str = "lo", scheme: str = "http", responses: dict | None = None)` runs an HTTP responder through an agent on the compromised host. It prefers an elevated agent but permits ordinary user operations. Address assignment, protected ports, and cross-user process control require the corresponding guest permissions.
+
+- `start` records request metadata and bodies. It reuses an assigned address or adds a missing address to `interface` for later cleanup. Binding `0.0.0.0` needs no address assignment.
+- Choose `response_body` for the same HTML on every GET and a simple acknowledgement for POST/PUT/PATCH. Alternatively, `responses` maps `"METHOD /path"` to dictionaries with `body` (UTF-8 text), `status` (default 200), and `headers`. Query strings do not select routes; unmatched mapped routes return 404. HEAD can reuse GET metadata without sending a body. Content-Length is calculated from the response bytes.
+- `observe` returns captured source, method, path, headers, and body in HTTPServiceEvent. Failed observation reports an unknown state.
+- `stop` terminates the matching responder and removes only its owned address, retaining the capture log. Cleanup failures and residual state are reported.
+- Reuse the service id, bind address, and port for observation and cleanup. Stop before changing content or bind settings.
+
+Inspect the legitimate service with `HTTPRequest` and supply the desired content and interactions yourself. Serving a page does not change routing. Only HTTP is supported.
+
+### 6.4 HTTP Requests
+`HTTPRequest(host: Host, url: str, method: str = "GET", headers: dict | None = None, body: str | None = None, username: str | None = None, password: str | None = None, output_path: str | None = None)` sends a request through an agent on the compromised source host. No agent on the target service or root privileges are required.
+
+HTTPResponseEvent contains the status, response headers, body, saved path, and any error. Redirects are returned without following them. An HTTP error status is an observed response, distinct from a transport failure. Supply headers and a text body to reproduce an interaction; supply username and password together for HTTP Basic authentication. Captured form bodies remain observations for the caller to interpret.
+
+`output_path` saves a successful response's original bytes and returns an ExfiltratedData checksum event. Relative paths use the executing agent's home directory; existing files are not overwritten. HTTPS, browser sessions, and automatic website cloning are not implemented.
