@@ -17,3 +17,4 @@ from .writeable_sudoers_event import WriteablePasswd
 
 from .vulnerable_service_found_event import VulnerableServiceFound
 from .scan_report_event import ScanReportEvent
+from .bgp_router_event import BGPRouterEvent

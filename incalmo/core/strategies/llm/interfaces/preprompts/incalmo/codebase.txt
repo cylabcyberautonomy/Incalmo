@@ -147,3 +147,14 @@ All events inherit from the base `Event` class (Event.py)
 - `EscelatePrivledge` (EscelatePrivledge.py): Attempts to escalate privileges on a target host using available techniques.
 
 `EscelatePrivledge(host: Host)`
+
+
+### 6.2 BGP Router Actions
+These high-level actions use the restricted router access installed on a compromised host. The `host` must be a `Host` whose `get_agent()` returns an agent (the compromised intermediate, or in the baseline scenario the host that holds the edge key). The action uses that agent, the edge key already present at the agent user's `$HOME/.ssh/id_ed25519`, and the forced router wrapper. It does not accept a key path, another agent, or a management credential, and it does not run anything on the local manager; it fails if the host has no agent or the restricted key is unavailable.
+
+- `BGPRouterInspect(host: Host, router: str, aspect: str = "bgp")`: reads one local view. `aspect` is `bgp`, `summary`, `route`, `config`, or `neighbors`.
+- `BGPRouterAnnounce(host: Host, router: str, asn: int, prefix: str, next_hop: str)`: installs a static route for `prefix` to `next_hop` and adds `network prefix` under `router bgp asn`/`address-family ipv4 unicast`. It refuses if the exact prefix/route already exists. `local_command_ok` is the wrapper/vtysh result; `installed` is the post-change local BGP/route view; neither proves remote acceptance.
+- `BGPRouterWithdraw(host: Host, router: str, asn: int, prefix: str, next_hop: str)`: removes only the exact static route/network statement. It refuses if the configured static prefix/next-hop differs. Use it only for entries you created; it does not track ownership of existing configuration. `removed` requires successful post-change reads showing the local BGP/route absent.
+- `BGPRouterObserve(host: Host, router: str, prefix: str)`: reads the attacker router's local `show ip bgp prefix`.
+
+`router` is the attacker router's IPv4 address that you discovered; `prefix` is an exact IPv4 network (host bits are rejected); `next_hop` is the address that should receive the redirected traffic (your host's reachable data address). Local command success is not remote route acceptance or traffic redirection: observe the client, portal, and transit evidence separately. The actions do not reveal topology, hidden prefixes, or credentials.
