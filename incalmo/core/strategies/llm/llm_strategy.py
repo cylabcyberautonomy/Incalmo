@@ -298,6 +298,16 @@ class LLMStrategy(IncalmoStrategy, ABC):
                 return False
 
             if llm_action.response_type == LLMResponseType.BASH:
+                if self.abstraction != AbstractionLevel.SHELL:
+                    self.last_response = (
+                        "Shell commands are only available in the shell abstraction; "
+                        "use a high-level action or query."
+                    )
+                    self.logger.error(
+                        "[LLMStrategy] rejected a BASH response under %s",
+                        self.abstraction,
+                    )
+                    return False
                 command = llm_action.response
                 self.logger.info(f"Bash command: \n{command}")
                 self.bash_log += f"Bash command: {command}\n"

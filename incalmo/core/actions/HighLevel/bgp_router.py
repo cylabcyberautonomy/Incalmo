@@ -1,7 +1,7 @@
 """High-level BGP operations through a compromised host's restricted router access.
 
 The actions deliberately do not expose a general router shell. They require a
-`Host` with a C2 agent (the compromised intermediate), use the edge key that is
+`Host` with a C2 agent, use the edge key that is
 already installed on that host, and go through the existing forced wrapper.
 The event reports the attacker router's local command/view; remote route
 acceptance and traffic redirection are separate observations.
@@ -147,16 +147,42 @@ class _BGPRouterAction(HighLevelAction):
         self.host = host
         self.router = _router_address(router, self.host)
 
-    def _agent(self) -> Agent:
-        agent = self.host.get_agent()
-        if agent is None:
+    async def _select_agent(
+        self,
+        low_level_action_orchestrator: LowLevelActionOrchestrator,
+        context: HighLevelContext,
+    ) -> Agent:
+        """Use the host agent that actually holds the restricted router key.
+
+        A host normally has one agent. If multiple agents are present (for
+        example after privilege escalation), ``Host.get_agent()`` is random and
+        can select a user whose ``$HOME`` does not contain the authorized edge
+        key. Probe each agent with a read-only wrapper command and use the first
+        working identity; never guess.
+        """
+        agents = sorted(
+            (agent for agent in self.host.agents if agent is not None),
+            key=lambda agent: (agent.username, agent.paw),
+        )
+        if not agents:
             raise RuntimeError(
                 "BGP action requires a C2 agent on the compromised host "
                 f"{self.host.hostname or self.host.ip_addresses}; the host is not compromised"
             )
-        if not self.host.has_agent(agent):
-            raise RuntimeError("selected agent does not belong to the supplied host")
-        return agent
+        if len(agents) == 1:
+            return agents[0]
+        for agent in agents:
+            output, rc = await self._run(
+                low_level_action_orchestrator,
+                agent,
+                "show ip bgp summary",
+                context,
+            )
+            if rc == 0 and "BGP" in output:
+                return agent
+        raise RuntimeError(
+            "no C2 agent on the compromised host can use the restricted router key"
+        )
 
     async def _run(
         self,
@@ -201,7 +227,7 @@ class BGPRouterInspect(_BGPRouterAction):
         attack_graph_service: AttackGraphService,
         context: HighLevelContext,
     ) -> list[Event]:
-        agent = self._agent()
+        agent = await self._select_agent(low_level_action_orchestrator, context)
         self._record(attack_graph_service, f"bgp_inspect_{self.aspect}")
         output, rc = await self._run(
             low_level_action_orchestrator, agent, _ASPECT_COMMANDS[self.aspect], context
@@ -233,7 +259,7 @@ class BGPRouterObserve(_BGPRouterAction):
         attack_graph_service: AttackGraphService,
         context: HighLevelContext,
     ) -> list[Event]:
-        agent = self._agent()
+        agent = await self._select_agent(low_level_action_orchestrator, context)
         self._record(attack_graph_service, "bgp_observe")
         output, rc = await self._run(
             low_level_action_orchestrator, agent, f"show ip bgp {self.prefix}", context
@@ -272,7 +298,7 @@ class BGPRouterAnnounce(_BGPRouterAction):
         attack_graph_service: AttackGraphService,
         context: HighLevelContext,
     ) -> list[Event]:
-        agent = self._agent()
+        agent = await self._select_agent(low_level_action_orchestrator, context)
         bgp_state, bgp_rc = await self._run(
             low_level_action_orchestrator, agent, f"show ip bgp {self.prefix}", context
         )
@@ -377,7 +403,7 @@ class BGPRouterWithdraw(_BGPRouterAction):
         attack_graph_service: AttackGraphService,
         context: HighLevelContext,
     ) -> list[Event]:
-        agent = self._agent()
+        agent = await self._select_agent(low_level_action_orchestrator, context)
         bgp_state, bgp_rc = await self._run(
             low_level_action_orchestrator, agent, f"show ip bgp {self.prefix}", context
         )
