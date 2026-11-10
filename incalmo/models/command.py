@@ -15,3 +15,4 @@ class Command(BaseModel):
     instructions: Instruction
     status: CommandStatus
     result: CommandResult | None = None
+    payload_file: str | None = None

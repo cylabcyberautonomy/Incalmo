@@ -8,8 +8,7 @@ import uuid
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
 
-from incalmo.models.instruction import Instruction
-from incalmo.models.command import Command, CommandStatus
+from incalmo.models.command import CommandStatus
 from incalmo.models.command_result import CommandResult
 from incalmo.c2server.shared import (
     agents,
@@ -18,7 +17,7 @@ from incalmo.c2server.shared import (
     command_results,
     decode_base64,
     encode_base64,
-    read_template_file,
+    queue_command,
     PAYLOADS_DIR,
 )
 from incalmo.models.agent import Agent
@@ -67,6 +66,9 @@ def beacon():
 
             command_results[command_id].result = result
             command_results[command_id].status = CommandStatus.COMPLETED
+            payload_file = command_results[command_id].payload_file
+            if payload_file is not None:
+                (PAYLOADS_DIR / payload_file).unlink(missing_ok=True)
 
     # Get next command from queue if available
     instructions = []
@@ -113,30 +115,7 @@ def delete_agent(paw):
     agent_pid = agent.pid
 
     kill_command = f"(sleep 3 && kill -9 {agent_pid}) &"
-    exec_template = read_template_file("Exec_Bash_Template.sh")
-    executor_script_content = exec_template.safe_substitute(command=kill_command)
-    executor_script_path = PAYLOADS_DIR / "kill_agent.sh"
-    executor_script_path.write_text(executor_script_content)
-
-    command_id = str(uuid.uuid4())
-    instruction = Instruction(
-        id=command_id,
-        command=encode_base64("./kill_agent.sh"),
-        executor="sh",
-        timeout=60,
-        payloads=["kill_agent.sh"],
-        uploads=[],
-        delete_payload=True,
-    )
-
-    # Add command to queue
-    command_queues[paw].append(instruction)
-    command_results[command_id] = Command(
-        id=command_id,
-        instructions=instruction,
-        status=CommandStatus.PENDING,
-        result=None,
-    )
+    queue_command(paw, kill_command)
 
     agent_deletion_queue.add(paw)
 

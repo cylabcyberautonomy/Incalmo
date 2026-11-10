@@ -38,6 +38,9 @@ class RunBashCommand(LowLevelAction):
                 "status: polling timed out; command outcome unknown "
                 "(it may still be running)"
             )
+        elif status == "124":
+            parts.append("status: agent execution timed out")
+            parts.append(f"exit code: {exit_code}")
         elif exit_code == "":
             parts.append("exit code: (empty)")
         elif exit_code != "0":
@@ -48,4 +51,7 @@ class RunBashCommand(LowLevelAction):
         if not parts:
             parts.append("(no output)")
 
-        return [BashOutputEvent(self.agent, "\n".join(parts))]
+        return [BashOutputEvent(
+            self.agent, "\n".join(parts), command_id=result.id,
+            status=result.status, exit_code=result.exit_code, pid=result.pid,
+        )]
