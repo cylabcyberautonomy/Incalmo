@@ -96,7 +96,7 @@ class LateralMoveToHost(HighLevelAction):
         events = []
 
         # A caller can hand us a host that isn't in the environment state — e.g. a
-        # state-machine strategy targeting a hardcoded IP that a flaky/aggressive
+        # state-machine strategy targeting a hardcoded IP that an unreliable/aggressive
         # ping sweep never discovered (or a subnet it never scanned). There is
         # nothing to move to or from, so return cleanly instead of dereferencing
         # None (.ssh_config / .ip_addresses / .open_ports below).

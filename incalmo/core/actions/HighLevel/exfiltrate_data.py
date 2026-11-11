@@ -87,7 +87,7 @@ class ExfiltrateData(HighLevelAction):
                 # The relay reports only that every command was DISPATCHED: scp and
                 # wget emit no success event, so a hop with no route is
                 # indistinguishable from one that worked. The md5sum sweep of the
-                # attacker's home is the only ground truth available, so confirm the
+                # attacker's home is the only confirmation available, so confirm the
                 # files actually landed before writing off the ssh fallback -- the
                 # old unconditional `return True` is what made that fallback dead
                 # code and reported a failed exfiltration as a successful one.

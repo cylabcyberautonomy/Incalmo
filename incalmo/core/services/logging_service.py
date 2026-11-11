@@ -56,7 +56,7 @@ class TokenUsageLogger:
         # corpus that is a 5x spread between the two bounds ($586 vs $116), so the split is the number.
         #
         # response_id is the provider's own id for this call: the join key back to their billing records, so
-        # cost can be reconciled against ground truth instead of trusted as our own arithmetic.
+        # cost can be reconciled against the provider record instead of trusted as our own arithmetic.
         #
         # wall_clock_latency_ms is OUR OWN measurement (time.monotonic() around the model.invoke() call) -
         # never a provider/proxy-reported figure. Named explicitly to not be confused with the native,
