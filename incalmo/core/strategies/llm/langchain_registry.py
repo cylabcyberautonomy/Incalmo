@@ -493,6 +493,8 @@ def _build_deployments() -> Dict[str, dict]:
         ("gemini-3.1-pro-litellm", "gemini/gemini-3.1-pro-preview"),
         ("gemini-3.5-flash-litellm", "gemini/gemini-3.5-flash"),
         ("gemini-2.5-pro-litellm", "gemini/gemini-2.5-pro"),
+        # ── Open-weight ──
+        ("kimi-k3-litellm", "us.moonshotai.kimi-k3"),
     ]
     for name, model in _LITELLM_MODELS:
         d[name] = {
@@ -501,6 +503,28 @@ def _build_deployments() -> Dict[str, dict]:
             "base_url": "env/LITELLM_BASE_URL",
             "credential_ref": "LITELLM_API_KEY",
             "params": {},
+        }
+
+    # Open-weight OpenRouter models, each pinned to ONE endpoint with fallbacks off
+    # (OpenRouter's `provider` body field), so every call of a dataset hits the same weights/quantization or
+    # fails. The response's `provider` field (kept by _OpenRouterChatOpenAI) records who served each call.
+    # base_url is overridable via OPENROUTER_BASE_URL.
+    _OPENROUTER_PINNED = {
+        "kimi-k3.1-pro-pinned": ("moonshotai/kimi-k3.1-pro", "moonshotai/mxfp4"),
+        "qwen3.8-2.4t-pinned": ("qwen/qwen3.8-2.4t-a95b", "siliconflow/fp8"),  # Alibaba moderation blocked agents
+    }
+    for name, (model, pin) in _OPENROUTER_PINNED.items():
+        d[name] = {
+            "provider": "openrouter",
+            "model": model,
+            "base_url": os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+            "credential_ref": "OPENROUTER_API_KEY",
+            "params": {
+                "extra_body": {
+                    "provider": {"order": [pin], "allow_fallbacks": False},
+                    "usage": {"include": True},
+                }
+            },
         }
 
     return d
