@@ -7,6 +7,12 @@ class EnvironmentInitializer:
         self.attacker_config = config
 
     def get_initial_environment_state(self):
+        # Harness-provided starting knowledge wins: only the subnet(s) reachable from the foothold, so the
+        # strategy has to discover the rest (the table below hands enterprise_a/b the whole map).
+        if self.attacker_config.initial_subnets:
+            return Network(
+                [Subnet(cidr) for cidr in self.attacker_config.initial_subnets]
+            )
         if (
             self.attacker_config.environment == Environment.EQUIFAX_LARGE.value
             or self.attacker_config.environment == Environment.EQUIFAX_MEDIUM.value

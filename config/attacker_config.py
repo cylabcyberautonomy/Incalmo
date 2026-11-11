@@ -65,6 +65,9 @@ class AttackerConfig(BaseModel):
     # from Kali's in-tenant IP. ConfigService fills this from c2c_server when unset.
     agent_c2c_server: Optional[str] = None
     blacklist_ips: list[str] = field(default_factory=list)
+    # The subnets the attacker starts out knowing (the harness passes the environment's starting subnet(s),
+    # the same knowledge every other agent gets). None = the built-in per-environment table.
+    initial_subnets: Optional[list[str]] = None
 
     class Config:
         # Enums are serialized as their values
