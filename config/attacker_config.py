@@ -65,6 +65,7 @@ class AttackerConfig(BaseModel):
     # from Kali's in-tenant IP. ConfigService fills this from c2c_server when unset.
     agent_c2c_server: Optional[str] = None
     blacklist_ips: list[str] = field(default_factory=list)
+    attacker_briefing: Optional[str] = None
 
     class Config:
         # Enums are serialized as their values

@@ -131,6 +131,8 @@ To use an your choice of an LLM-based attack:
 
 - Specify in ```config/config.json``` what LLMs to use (list is available in the [registry](incalmo/core/strategies/llm/langchain_registry.py)). Use the ```config_example.json``` as a template
 
+  The optional top-level `attacker_briefing` string adds authored starting knowledge to the initial prompt. It supplements the existing mission and action instructions without adding hosts or access permissions. Omit it to keep the existing prompt.
+
 - Run ```main.py``` as described in the setup
 
 - Observe the status of the attack through the logs in the output directory. Your attack will be timestamped and used to name the logs folder
