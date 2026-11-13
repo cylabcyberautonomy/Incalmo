@@ -199,7 +199,11 @@ class LLMInterface(ABC):
         initial_env_state += str(environment_state_service)
 
         # Merge the pre-prompt, code base, and final prompt
-        self.pre_prompt = pre_prompt + initial_env_state + final_prompt
+        self.briefing_section = (
+            f"\n\n## Attacker briefing\n\n{config.attacker_briefing}\n\n"
+            if config.attacker_briefing else ""
+        )
+        self.pre_prompt = pre_prompt + self.briefing_section + initial_env_state + final_prompt
 
     def get_llm_action(self, incalmo_response: str | None = None):
         if incalmo_response and len(incalmo_response) > self.max_message_len:

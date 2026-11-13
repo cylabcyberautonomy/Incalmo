@@ -1,11 +1,9 @@
 from incalmo.core.actions.low_level_action import LowLevelAction
 from incalmo.models.agent import Agent
-from incalmo.core.services.config_service import ConfigService
 from config.attacker_config import AttackerConfig
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-import json
 import time
 from incalmo.models.command_result import CommandResult
 from incalmo.models.command import Command, CommandStatus
@@ -18,49 +16,45 @@ from incalmo.models.llm_agent_action_data import LLMAgentActionData
 _HTTP_TIMEOUT = (10, 60)
 
 
+class C2UnavailableError(requests.ConnectionError):
+    """C2 communication failed; a submitted command may still be executing."""
+
+    def __init__(self, message: str, command_id: str | None = None):
+        super().__init__(message)
+        self.command_id = command_id
+
+
 class _TimeoutSession(requests.Session):
-    """Session that applies _HTTP_TIMEOUT to every request unless one is passed explicitly, so no
-    bare call can hang forever on a black-holed tunnel."""
+    """Apply a request timeout and identify exhausted C2 transport failures."""
+
     def request(self, *args, **kwargs):
         kwargs.setdefault("timeout", _HTTP_TIMEOUT)
-        return super().request(*args, **kwargs)
+        try:
+            return super().request(*args, **kwargs)
+        except requests.RequestException as exc:
+            raise C2UnavailableError(f"C2 request failed: {exc}") from exc
 
 
 class _LoggingRetry(Retry):
-    """Retry that LOGS every retry event to stdout (-> attacker.log). Silent retries hid whether a
-    run's tunnel was dropping: a bridged drop left no trace, so a run that limped along in backoff
-    and then hit the wall-clock cap looked identical to one doing genuine work. Now each retry prints
-    a timestamped '[c2-retry]' line naming the failure, so post-hoc we can count drops and sum the
-    time a run actually lost to the tunnel — distinguishing a genuine 45-min attack from a stall."""
+    """Log C2 request failures without assuming a tunnel is their cause."""
+
     def increment(self, method=None, url=None, response=None, error=None, _pool=None, _stacktrace=None):
-        try:
-            reason = error if error is not None else (f"HTTP {response.status}" if response is not None else "unknown")
-            print(f"[c2-retry] {time.strftime('%Y-%m-%d %H:%M:%S')} {method} {url} — bridging failure: {reason}",
-                  flush=True)
-        except Exception:
-            pass
-        # self.new() (used inside super().increment) preserves type(self), so logging persists across retries
+        reason = error if error is not None else (f"HTTP {response.status}" if response is not None else "unknown")
+        print(f"[c2-retry] {time.strftime('%Y-%m-%d %H:%M:%S')} {method} {url} — C2 request failed: {reason}",
+              flush=True)
         return super().increment(method, url, response, error, _pool, _stacktrace)
 
 
 def _build_session() -> requests.Session:
-    """A requests.Session whose adapter retries transient C2 unavailability instead of letting a
-    single failure crash the (often hour-long) attacker run. Under c2_on_kali the client reaches the
-    C2 through an ssh -L tunnel over a contended bastion/FIP; the tunnel occasionally drops and its
-    supervisor reconnects within seconds — but a bare requests.get during that gap raises
-    ConnectionError([Errno 111]) and the attacker exits 1, discarding all the LLM spend already
-    incurred. Retry policy:
-      * connect=12  — a REFUSED/failed CONNECT means the server never saw the request, so retrying is
-                      always safe (even for POST); this is the dominant tunnel-gap case. With backoff
-                      it rides out multi-minute reconnect windows.
-      * read=2      — a failure AFTER the request was sent could double-execute a non-idempotent POST
-                      (send_command), so keep this small.
-      * status 502/503/504 — transient C2/proxy errors.
-    backoff_factor grows the delay (capped at urllib3's 120s) so a long outage waits, not spins."""
+    """Retry safe reads and pre-submission connection failures.
+
+    A lost POST response may follow successful queueing. Do not repeat a
+    mutation after a read failure or HTTP error.
+    """
     retry = _LoggingRetry(
         total=12, connect=12, read=2, status=3,
         backoff_factor=1.5, status_forcelist=(502, 503, 504),
-        allowed_methods=None,          # retry all methods (POSTs need connect-retries); read=2 bounds POST risk
+        allowed_methods=frozenset({"GET", "HEAD", "OPTIONS"}),
         raise_on_status=False, respect_retry_after_header=True,
     )
     s = _TimeoutSession()
@@ -72,6 +66,8 @@ def _build_session() -> requests.Session:
 
 class C2ApiClient:
     def __init__(self):
+        from incalmo.core.services.config_service import ConfigService
+
         self.server_url = ConfigService().get_config().c2c_server
         self._session = _build_session()
 
@@ -114,57 +110,56 @@ class C2ApiClient:
         else:
             return None
 
+    def get_command_status(self, command_id: str) -> Command:
+        """Read a submission without consuming its eventual result."""
+        try:
+            response = self._session.get(f"{self.server_url}/command_status/{command_id}")
+        except C2UnavailableError as exc:
+            raise C2UnavailableError(
+                f"Cannot observe command {command_id}; execution outcome unknown: {exc}",
+                command_id=command_id,
+            ) from exc
+        if not response.ok:
+            raise C2UnavailableError(
+                f"Cannot observe command {command_id}: HTTP {response.status_code}; execution outcome unknown",
+                command_id=command_id,
+            )
+        return Command(**response.json())
+
     def send_command(self, low_level_action: LowLevelAction) -> CommandResult:
-        """Send a command to an agent and poll for results."""
-        # Send the command
+        """Submit once, then poll; expiration does not cancel the instruction."""
         payload = {
             "agent": low_level_action.agent.paw,
             "command": low_level_action.command,
             "payloads": low_level_action.payloads,
         }
-        headers = {"Content-Type": "application/json"}
-        response = self._session.post(
-            f"{self.server_url}/send_command", data=json.dumps(payload), headers=headers
-        )
-
+        try:
+            response = self._session.post(
+                f"{self.server_url}/send_command", json=payload,
+            )
+        except C2UnavailableError as exc:
+            raise C2UnavailableError(f"Command submission failed; acceptance unknown: {exc}") from exc
+        if response.status_code >= 500:
+            raise C2UnavailableError(
+                f"Command submission returned HTTP {response.status_code}; acceptance unknown"
+            )
         if not response.ok:
             raise Exception(
                 f"Failed to send command: {response.status_code} {response.text}"
             )
-
-        # Get command ID from initial response
         command = Command(**response.json())
-        if not command:
-            raise Exception("No command ID received from server")
-
-        # Poll for results
-        max_attempts = 45  # 45 seconds timeout
-        poll_interval = 1  # 1 second between polls
-
+        command_id = command.id
+        max_attempts = 45
+        started = time.monotonic()
         for _ in range(max_attempts):
-            status_response = self._session.get(
-                f"{self.server_url}/command_status/{command.id}"
-            )
-
-            if not status_response.ok:
-                raise Exception(
-                    f"Failed to check command status: {status_response.status_code} {status_response.text}"
-                )
-
-            command = Command(**status_response.json())
+            command = self.get_command_status(command_id)
             if command.status == CommandStatus.COMPLETED and command.result:
                 return command.result
+            time.sleep(1)
 
-            time.sleep(poll_interval)
-
-        # Return a timeout result instead of raising an exception
         return CommandResult(
-            exit_code="timeout",
-            id=command.id,
-            output="",
-            pid=0,
-            status="timeout",
-            stderr=f"Command polling timed out after {max_attempts} seconds",
+            exit_code="timeout", id=command_id, output="", pid=0, status="timeout",
+            stderr=f"Command polling exhausted after {max_attempts} polls ({time.monotonic() - started:.1f}s); execution outcome unknown",
         )
 
     def report_environment_state(self, network: Network):

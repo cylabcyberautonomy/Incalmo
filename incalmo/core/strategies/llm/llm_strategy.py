@@ -6,6 +6,7 @@ from incalmo.core.actions.HighLevel.llm_agents.llm_agent_action import (
 )
 
 from incalmo.core.strategies.incalmo_strategy import IncalmoStrategy
+from incalmo.api.server_api import C2UnavailableError
 from config.attacker_config import AbstractionLevel
 from incalmo.core.services.environment_state_service import (
     EnvironmentStateService,
@@ -298,6 +299,16 @@ class LLMStrategy(IncalmoStrategy, ABC):
                 return False
 
             if llm_action.response_type == LLMResponseType.BASH:
+                if self.abstraction != AbstractionLevel.SHELL:
+                    self.last_response = (
+                        "Shell commands are only available in the shell abstraction; "
+                        "use a high-level action or query."
+                    )
+                    self.logger.error(
+                        "[LLMStrategy] rejected a BASH response under %s",
+                        self.abstraction,
+                    )
+                    return False
                 command = llm_action.response
                 self.logger.info(f"Bash command: \n{command}")
                 self.bash_log += f"Bash command: {command}\n"
@@ -313,14 +324,17 @@ class LLMStrategy(IncalmoStrategy, ABC):
                 self.bash_log += f"Command response: \n"
                 for result in results:
                     if isinstance(result, BashOutputEvent):
-                        object_info += result.bash_output
-                        self.bash_log += result.bash_output
+                        object_info += str(result)
+                        self.bash_log += str(result)
                         break
 
                 self.logger.info(f"Command response: \n{object_info}")
                 self.last_response = object_info
                 return False
 
+        except C2UnavailableError:
+            self.logger.error("C2 communication failed; ending the strategy")
+            raise
         except Exception as e:
             self.last_response = f"Error executing query or action: {e} \n"
             self.last_response += traceback.format_exc()
