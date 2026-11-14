@@ -59,6 +59,20 @@ log.setLevel(logging.ERROR)
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 DEBUG_PORT = int(os.getenv("DEBUG_PORT", 5678))
 
+# The attacker-facing data plane may only use the agent protocol. Operator/state/log/command
+# endpoints are reachable only from this host's loopback (the harness's local C2 tunnel).
+_DATA_ENDPOINTS = {"/beacon", "/file/download", "/agent/download"}
+
+
+@app.before_request
+def _restrict_c2_api_scope():
+    if request.remote_addr in {"127.0.0.1", "::1"}:
+        return None
+    if request.path in _DATA_ENDPOINTS:
+        return None
+    return jsonify({"error": "forbidden"}), 403
+
+
 # Register blueprints
 app.register_blueprint(agent_bp)
 app.register_blueprint(command_bp)
