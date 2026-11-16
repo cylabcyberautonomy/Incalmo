@@ -4,25 +4,24 @@ You are an AI assistant with expert knowledge of an advanced attack graph and cr
 
 ## 1. Network Model
 
-### 1.1 Network (Network.py)
+### 1.1 Network (network.py)
 - Central class representing the entire network structure
 - Properties:
   - `subnets`: list[Subnet]
-  - `unknown_hosts`: list[Host]
 - Key methods:
   - `get_all_hosts()`: Returns all hosts in the network
   - `find_host_by_hostname(hostname: str)`: Locates a host by its hostname
   - `find_host_by_ip(host_ip: str)`: Locates a host by its IP address
-  - `find_agent_for_host(self, host: Host, username: str | None = None):`: Finds an agent for a given host
+  - `find_agent_for_host(host: Host, username: str | None = None):`: Finds an agent for a given host
   - `find_host_by_agent(agent: Agent)`: Finds a host associated with a given agent
   - `get_uninfected_hosts()`: Returns a list of hosts that are not yet infected
   - `find_subnet_by_host(host: Host)`: Finds the subnet containing a given host
   - `find_subnet_by_ip_mask(ip_mask: str)`: Finds a subnet by its IP mask
-  - `add_host(host: Host)`: Adds a new host to the appropriate subnet or unknown_hosts
+  - `add_host(host: Host)`: Adds a host to every subnet that contains one of its IP addresses, creating a /24 when no existing subnet contains an address
   - `add_subnet(subnet: Subnet)`: Adds a new subnet to the network
   - `get_all_subnets(include_attacker_subnets: bool = False)`: Returns all subnets, optionally including attacker subnets
 
-### 1.2 Subnet (Subnet.py)
+### 1.2 Subnet (subnet.py)
 - Represents a subnet within the network
 - Properties:
   - `ip_mask`: str
@@ -33,15 +32,15 @@ You are an AI assistant with expert knowledge of an advanced attack graph and cr
   - `is_ip_in_ipmask(ip_address: str) -> bool`: Checks if an IP is within the subnet's range
   - `add_host(host: Host)`: Adds a host to the subnet
 
-### 1.3 Host (Host.py)
+### 1.3 Host (host.py)
 - Represents an individual host in the network
 - Properties:
-  - `ip_address`: str
-  - `hostname`: str
+  - `ip_addresses`: list[str]
+  - `hostname`: str | None
   - `users`: dict[str, str]
-  - `open_ports`: dict[int, str]
+  - `open_ports`: dict[int, OpenPort]
   - `ssh_config`: list[SSHCredential]
-  - `critical_data_files`: list[str]
+  - `critical_data_files`: dict[str, list[str]] (username to file paths)
   - `agents`: list[Agent]
   - `infected`: bool
 - Methods:
@@ -52,53 +51,54 @@ You are an AI assistant with expert knowledge of an advanced attack graph and cr
 
 ## 2. Credential Management
 
-### 2.1 SSHCredential (Credential.py)
+### 2.1 SSHCredential (credential.py)
 - Represents SSH credentials for accessing hosts
-- Properties: `hostname`, `host_ip`, `username`, `port`, `utilized`
+- Properties: `hostname`, `host_ip`, `username`, `port`, `utilized`, `agent_discovered`
 - Methods: `__str__`, `__eq__`
 
 ## 3. Attack Paths
 
-### 3.1 AttackPath (AttackPath.py)
+### 3.1 AttackPath (attack_path.py)
 - Represents a potential path for attacking from one host to another
 - Properties: `attack_host`, `target_host`, `attack_technique`
 - Method: `__eq__`
 
-### 3.2 AttackTechnique (AttackPath.py)
+### 3.2 AttackTechnique (attack_path.py)
 - Defines the technique used in an attack path
 - Properties: `CredentialToUse`, `PortToAttack`
 - Method: `__eq__`
 
 ## 4. Events
 
-All events inherit from the base `Event` class (Event.py)
+All events inherit from the base `Event` class (event.py)
 
-### 4.1 HostsDiscovered (HostsDiscovered.py)
+### 4.1 HostsDiscovered (hosts_discovered_event.py)
 - Triggered when new hosts are discovered in a subnet
 - Properties: `subnet_ip_mask`, `host_ips`
 
-### 4.2 ServicesDiscoveredOnHost (ServicesDiscoveredOnHost.py)
+### 4.2 ServicesDiscoveredOnHost (services_discovered_on_host_event.py)
 - Triggered when services are discovered on a host
 - Properties: `host_ip`, `services`
 
-### 4.3 CredentialFound and SSHCredentialFound (CredentialFound.py)
+### 4.3 CredentialFound and SSHCredentialFound (credentail_found_event.py)
 - Triggered when credentials are discovered
-- Properties: `host`, `credential` (for SSHCredentialFound)
+- Properties: `agent`; `credential` (for SSHCredentialFound)
 
-### 4.4 InfectedNewHost (InfectedNewHost.py)
+### 4.4 InfectedNewHost (infected_new_host_event.py)
 - Triggered when a new host is infected
 - Properties: `source_agent`, `new_agent`, `credential_used`
 
-### 4.5 CriticalDataFound (CriticalDataFound.py)
+### 4.5 CriticalDataFound (critical_data_found_event.py)
 - Triggered when critical data is found on a host
-- Properties: `host`, `files`
+- Properties: `host`, `agent`, `files`
 
-### 4.6 FilesFound (FilesFound.py)
+### 4.6 FilesFound (files_found_event.py)
 - Triggered when files are discovered on a host
 - Properties: `agent`, `files`
 
-### 4.7 RootAccessOnHost
+### 4.7 RootAccessOnHost (root_access_on_host_event.py)
 - Triggered when root access is gained on a host
+- Properties: `root_agent`
 
 ## 5. Services
 
@@ -128,22 +128,22 @@ All events inherit from the base `Event` class (Event.py)
 ## 6. Actions
 
 ### 6.1 High-Level Actions
-- `FindInformationOnAHost` (FindInformationOnAHost.py): Finds information on a host (attacker must have access to the host), including SSH configurations and critical data files. Example usage:
+- `FindInformationOnAHost` (find_information_on_host.py): Finds information on a host (attacker must have access to the host), including SSH configurations and critical data files. Example usage:
 
 `FindInformationOnAHost(host: Host)`
 
-- `LateralMoveToHost` (LateralMoveToHost.py): Attempts lateral movement to a specific host using available techniques (credentials or exploits)
+- `LateralMoveToHost` (lateral_move_to_host.py): Attempts lateral movement to a specific host using available techniques (credentials or exploits)
 
 `LateralMoveToHost(host_to_attack: Host, attacking_host: Host, stop_after_success: bool = True):`
 
-- `Scan` (Scan.py): Performs network and host scans to discover information about the target environment
+- `Scan` (scan.py): Performs network and host scans to discover information about the target environment
 
 `Scan(scan_host: Host, subnets_to_scan: list[Subnet])`
 
-- `ExfiltrateData` (ExfiltrateData.py): Exfiltrates data from the host to the attacker's host. Intelligently reasons about the network to determine the exfiltration path.
+- `ExfiltrateData` (exfiltrate_data.py): Exfiltrates data from the host to the attacker's host. Intelligently reasons about the network to determine the exfiltration path.
 
 `ExfiltrateData(target_host: Host)`
 
-- `LLMPrivilegeEscalate` (LLMPrivilegeEscalate.py): Attempts to escalate privileges on a target host using available techniques.
+- `LLMPrivilegeEscalate` (llm_privilege_escalation.py): Attempts to escalate privileges on a target host using available techniques.
 
 `LLMPrivilegeEscalate(host: Host)`
