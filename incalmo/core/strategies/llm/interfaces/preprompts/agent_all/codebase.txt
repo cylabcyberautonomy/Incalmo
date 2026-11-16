@@ -18,7 +18,7 @@ You are an AI assistant with expert knowledge of an advanced attack graph and cr
   - `find_subnet_by_host(host: Host)`: Finds the subnet containing a given host
   - `find_subnet_by_ip_mask(ip_mask: str)`: Finds a subnet by its IP mask
   - `add_host(host: Host)`: Adds a host to every subnet that contains one of its IP addresses, creating a /24 when no existing subnet contains an address
-  - `add_subnet(subnet: Subnet)`: Adds a new subnet to the network
+  - `add_subnet(subnet: Subnet) -> Subnet`: Registers a subnet and returns the registered object; reuses an existing subnet when `ip_mask` and `attacker_subnet` match
   - `get_all_subnets(include_attacker_subnets: bool = False)`: Returns all subnets, optionally including attacker subnets
 
 ### 1.2 Subnet (subnet.py)
