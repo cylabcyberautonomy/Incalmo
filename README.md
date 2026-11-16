@@ -28,6 +28,7 @@ Incalmo is an autonomous AI-driven network penetration testing tool that automat
 - [Usage](#usage)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
+- [Known Limitations](#known-limitations)
 - [Contributing](#contributing)
 - [License](#license)
 - [Acknowledgements](#acknowledgements)
@@ -214,6 +215,10 @@ Incalmo/
 └── output/                    # Execution logs and results
 
 ```
+
+## Known Limitations
+
+See [Known Limitations](docs/known_limitations.md) for general limitations of the current implementation.
 
 ## Contributing
 
