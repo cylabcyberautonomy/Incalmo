@@ -12,7 +12,7 @@ from incalmo.c2server.shared import BASE_DIR, AGENTS_DIR
 
 def _safe_file_name(name: str) -> str:
     """Reject traversal/absolute paths; all served files live directly in a payload directory."""
-    if not name or name in {".", ".."} or Path(name).name != name or "\\" in name:
+    if not name or name in {".", ".."} or Path(name).name != name or "\\" in name or "\x00" in name:
         raise ValueError("invalid file name")
     return name
 
