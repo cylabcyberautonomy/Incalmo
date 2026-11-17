@@ -237,9 +237,7 @@ class LLMStrategy(IncalmoStrategy, ABC):
                 objects = await dynamic_query_execution(
                     self.environment_state_service, self.attack_graph_service, query
                 )
-                for obj in objects:
-                    # Check if the object is Host
-                    current_response += str(obj) + "\n"
+                current_response += _format_query_result(objects) + "\n"
 
                 self.logger.info(f"Query response: \n{current_response}")
                 self.last_response = current_response
@@ -331,6 +329,14 @@ class LLMStrategy(IncalmoStrategy, ABC):
             return False
 
         return False
+
+
+def _format_query_result(result) -> str:
+    if isinstance(result, (list, tuple, set)):
+        if not result:
+            return str(result)
+        return "\n".join('""' if item == "" else str(item) for item in result)
+    return '""' if result == "" else str(result)
 
 
 def get_infection_summary_str(

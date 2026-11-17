@@ -32,7 +32,8 @@ class Subnet:
         return False
 
     def add_host(self, host: Host):
-        self.hosts.append(host)
+        if host not in self.hosts:
+            self.hosts.append(host)
 
     def remove_host(self, host: Host):
         if host in self.hosts:

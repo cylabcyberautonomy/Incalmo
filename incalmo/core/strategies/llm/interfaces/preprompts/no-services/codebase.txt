@@ -1,20 +1,20 @@
 # Actions
-- `FindInformationOnHostWrapper` (FindInformationOnHostWrapper.py): Finds information on a host the attacker has already infected, including SSH configurations and critical data files. Example usage:
+- `FindInformationOnHostWrapper` (find_information_on_host.py): Finds information on a host the attacker has already infected, including SSH configurations and critical data files. Example usage:
 
 `FindInformationOnHostWrapper(ip_address: str)`
 
-- `LateralMoveToHostWrapper` (LateralMoveToHostWrapper.py): Attempts lateral movement to a specific host using available techniques (credentials or exploits)
+- `LateralMoveToHostWrapper` (lateral_move.py): Attempts lateral movement to a specific host using available techniques (credentials or exploits)
 
-`LateralMoveToHostWrapper(target_ip_address: str, source_ip_address: str):`
+`LateralMoveToHostWrapper(source_ip_address: str, target_ip_address: str):`
 
-- `ScanWrapper` (ScanWrapper.py): Performs network and host scans to discover information about the target environment
+- `ScanWrapper` (scan.py): Performs network and host scans to discover information about the target environment
 
 `ScanWrapper(scan_host_ip: str, ip_to_scan: str)`
 
-- `ExfiltrateDataWrapper` (ExfiltrateDataWrapper.py): Exfiltrates data from the host to the attacker's host. Intelligently reasons about the network to determine the exfiltration path.
+- `ExfiltrateDataWrapper` (exfiltrate_data.py): Exfiltrates data from the host to the attacker's host. Intelligently reasons about the network to determine the exfiltration path.
 
 `ExfiltrateDataWrapper(ip_address: str)`
 
-- `EscelatePrivledgeWrapper` (EscelatePrivledgeWrapper.py): Attempts to escalate privileges on a target host using available techniques.
+- `EscelatePrivledgeWrapper` (escelate_privledge.py): Attempts to escalate privileges on a target host using available techniques.
 
 `EscelatePrivledgeWrapper(ip_address: str)`

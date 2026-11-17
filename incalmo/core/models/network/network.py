@@ -111,8 +111,19 @@ class Network:
             if subnet.any_ips_in_subnet(host.ip_addresses):
                 subnet.add_host(host)
 
-    def add_subnet(self, subnet: Subnet):
+    def add_subnet(self, subnet: Subnet) -> Subnet:
+        """Add a subnet, reusing an equivalent one for the same prefix and visibility."""
+        for existing in self.subnets:
+            if (
+                existing.ip_mask == subnet.ip_mask
+                and existing.attacker_subnet == subnet.attacker_subnet
+            ):
+                for host in subnet.hosts:
+                    existing.add_host(host)
+                return existing
+
         self.subnets.append(subnet)
+        return subnet
 
     def get_all_subnets(self, include_attacker_subnets: bool = False):
         subnets = []
