@@ -135,7 +135,7 @@ class JevInterface(LLMInterface):
         # instructions stripped, read from the same file the incalmo abstraction
         # uses so the two never drift. $blacklist_ips is substituted exactly as
         # the base interface does.
-        self.goal_preamble = self._load_goal_preamble(config)
+        self.goal_preamble = self._load_goal_preamble(config) + self.briefing_section
 
     def _load_goal_preamble(self, config: AttackerConfig) -> str:
         path = os.path.join(

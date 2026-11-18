@@ -23,13 +23,11 @@ from incalmo.c2server.shared import PAYLOADS_DIR
 
 
 def _purge_stale_dynamic_payloads():
-    """Remove leftover per-command dynamic_payload_*.sh at C2 startup. These are ephemeral —
-    written per command from template_payloads/Exec_Bash_Template.sh and normally unlinked when a
-    strategy run ends (celery_tasks.py). A crashed/killed run leaves them behind, and under
-    c2_on_kali the /incalmo tree (incl. this dir) is shipped to the attacker's own Kali box where a
-    recon-capable attacker can read them — a cross-run info leak. Purging on startup guarantees each
-    C2 begins with a clean payloads dir even if a prior run didn't clean up. Never touches the tooling
-    (sandcat.go, downloadAgent.sh, template_payloads/, exploit scripts) — only the generated glob."""
+    """Remove generated scripts left by a previous server process.
+
+    In-flight scripts are retained until their individual results arrive.
+    Startup has no recoverable in-memory command queue.
+    """
     n = 0
     for path in PAYLOADS_DIR.glob("dynamic_payload_*.sh"):
         try:
@@ -60,6 +58,20 @@ log.setLevel(logging.ERROR)
 # Debug configuration
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 DEBUG_PORT = int(os.getenv("DEBUG_PORT", 5678))
+
+# The attacker-facing data plane may only use the agent protocol. Operator/state/log/command
+# endpoints are reachable only from this host's loopback (the harness's local C2 tunnel).
+_DATA_ENDPOINTS = {"/beacon", "/file/download", "/agent/download"}
+
+
+@app.before_request
+def _restrict_c2_api_scope():
+    if request.remote_addr in {"127.0.0.1", "::1"}:
+        return None
+    if request.path in _DATA_ENDPOINTS:
+        return None
+    return jsonify({"error": "forbidden"}), 403
+
 
 # Register blueprints
 app.register_blueprint(agent_bp)

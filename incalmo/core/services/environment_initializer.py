@@ -38,4 +38,6 @@ class EnvironmentInitializer:
                     Subnet("192.168.204.0/24"),
                 ]
             )
-        return Network([Subnet("192.168.200.0/24")])
+        # Unknown environments start with no prior network knowledge. The
+        # foothold agent still adds its own host when it beacons.
+        return Network([])

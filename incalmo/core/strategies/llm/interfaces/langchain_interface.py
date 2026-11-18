@@ -1,3 +1,4 @@
+import hashlib
 import time
 import random
 import os
@@ -105,6 +106,7 @@ class LangChainInterface(LLMInterface):
         self.conversation = [
             {"role": "system", "content": self.pre_prompt},
         ]
+        self.logger.info("Initial prompt SHA-256: " + hashlib.sha256(self.pre_prompt.encode()).hexdigest())
         self.token_logger = token_logger
         self.step = 0
 

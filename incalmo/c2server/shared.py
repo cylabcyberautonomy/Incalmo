@@ -5,6 +5,9 @@ Contains common code used across multiple route modules.
 
 import base64
 import json
+import os
+import shlex
+import uuid
 from collections import defaultdict
 from enum import Enum
 from pathlib import Path
@@ -12,9 +15,9 @@ from string import Template
 from typing import Dict
 
 from config.attacker_config import AttackerConfig
-from incalmo.models.command import Command
+from incalmo.models.command import Command, CommandStatus
+from incalmo.models.instruction import Instruction
 from incalmo.models.agent import Agent
-from datetime import datetime, timedelta
 
 
 # Define base directories
@@ -86,6 +89,45 @@ def read_template_file(filename):
     if not template_path.exists():
         raise FileNotFoundError(f"Template file not found: {filename}")
     return Template(template_path.read_text())
+
+
+def queue_command(
+    agent: str, command: str, payloads: list[str] | None = None
+) -> Command:
+    """Create one owned script, register its result, then publish its instruction."""
+    command_id = str(uuid.uuid4())
+    payload_name = f"dynamic_payload_{os.getenv('C2C_PORT', '8888')}_{command_id}.sh"
+    script = read_template_file("Exec_Bash_Template.sh").safe_substitute(
+        command=command
+    )
+    (PAYLOADS_DIR / payload_name).write_text(script)
+    files = list(payloads or [])
+    if files:
+        # Sandcat's deletion flag covers every attachment. Retain shared tools;
+        # this wrapper removes only the generated script after it finishes.
+        executable = shlex.quote("./" + payload_name)
+        cleanup = f"{executable}; __incalmo_rc=$?; rm -f -- {shlex.quote(payload_name)}; exit $__incalmo_rc"
+        encoded_command = base64.b64encode(cleanup.encode()).decode()
+    else:
+        encoded_command = encode_base64("./" + payload_name)
+    instruction = Instruction(
+        id=command_id,
+        command=encoded_command,
+        executor="sh",
+        timeout=60,
+        payloads=[*files, payload_name],
+        uploads=[],
+        delete_payload=not files,
+    )
+    command_obj = Command(
+        id=command_id,
+        instructions=instruction,
+        status=CommandStatus.PENDING,
+        payload_file=payload_name,
+    )
+    command_results[command_id] = command_obj
+    command_queues[agent].append(instruction)
+    return command_obj
 
 
 def get_latest_log_path(strategy_name=None, task_id=None):
